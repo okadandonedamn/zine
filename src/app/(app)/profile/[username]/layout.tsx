@@ -44,12 +44,20 @@ export default async function ProfileLayout({
             <p className="text-sm text-subtle">@{user.username}</p>
             <p className="mt-2 text-sm leading-6 text-muted">{user.bio}</p>
             <p className="mt-2 flex gap-4 text-xs text-subtle">
-              <span>
-                <span className="font-semibold text-foreground">{user.following}</span> フォロー
-              </span>
-              <span>
-                <span className="font-semibold text-foreground">{user.followers}</span> フォロワー
-              </span>
+              <Link
+                href={`/profile/${user.username}/following`}
+                className="hover:underline"
+              >
+                <span className="font-semibold text-foreground">{user.following}</span>{" "}
+                フォロー
+              </Link>
+              <Link
+                href={`/profile/${user.username}/followers`}
+                className="hover:underline"
+              >
+                <span className="font-semibold text-foreground">{user.followers}</span>{" "}
+                フォロワー
+              </Link>
             </p>
           </div>
           {isMe ? (

@@ -391,6 +391,51 @@ export async function updateAvatarUrl(url: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/* ---------- 作品登録 ---------- */
+const workInput = z.object({
+  title: z.string().min(1).max(100),
+  category: z.enum([
+    "film",
+    "music",
+    "literature",
+    "art",
+    "fashion",
+    "exhibition",
+    "stage",
+    "game",
+    "other",
+  ]),
+  creator: z.string().max(100),
+  year: z.number().int().min(0).max(2100).nullable(),
+  description: z.string().max(1000),
+});
+
+export async function createWork(
+  input: z.infer<typeof workInput>,
+): Promise<{ ok: true; mock?: boolean; id?: string } | { ok: false; error: string }> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const parsed = workInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data, error } = await supabase
+    .from("works")
+    .insert({
+      title: parsed.data.title,
+      category: parsed.data.category,
+      creator: parsed.data.creator,
+      year: parsed.data.year,
+      description: parsed.data.description,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "保存に失敗しました" };
+  revalidatePath("/works");
+  return { ok: true, id: data.id };
+}
+
 /* ---------- リアクション(いいね / ブックマーク / リポスト) ---------- */
 
 async function toggleReaction(

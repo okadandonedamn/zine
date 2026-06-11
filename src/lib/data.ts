@@ -176,6 +176,7 @@ async function fetchFeed(opts: {
   types?: FeedItemType[];
   userIds?: string[];
   id?: string;
+  ids?: string[];
 }): Promise<FeedItem[]> {
   const supabase = await createClient();
   let q = supabase
@@ -190,6 +191,7 @@ async function fetchFeed(opts: {
   if (opts.types) q = q.in("item_type", opts.types);
   if (opts.userIds) q = q.in("user_id", opts.userIds);
   if (opts.id) q = q.eq("id", opts.id);
+  if (opts.ids) q = q.in("id", opts.ids);
 
   const { data: rows, error } = await q;
   if (error || !rows) return [];
@@ -375,6 +377,27 @@ export async function getFeedItem(id: string): Promise<FeedItem | undefined> {
   return items[0];
 }
 
+/** 自分がブックマークした活動の一覧 */
+export async function getBookmarkedFeed(): Promise<FeedItem[]> {
+  if (!supabaseEnabled) {
+    return mock.feedItems.filter((f) => mock.bookmarkedFeedIds.includes(f.id));
+  }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("bookmarks")
+    .select("feed_item_id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  const ids = (data ?? []).map((b) => b.feed_item_id);
+  if (ids.length === 0) return [];
+  return fetchFeed({ ids });
+}
+
 /* =============================================================
  * ユーザー
  * ============================================================= */
@@ -422,6 +445,40 @@ export async function getUserByUsername(username: string): Promise<User | undefi
       .eq("follower_id", profile.id),
   ]);
   return { ...mapProfile(profile), followers: followers ?? 0, following: following ?? 0 };
+}
+
+/** このユーザーをフォローしている人たち */
+export async function getFollowers(userId: string): Promise<User[]> {
+  if (!supabaseEnabled) {
+    return mock.users.filter((u) => u.id !== userId).slice(0, 3);
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("follows")
+    .select("follower:profiles!follows_follower_id_fkey(*)")
+    .eq("followee_id", userId)
+    .limit(100);
+  return (data ?? [])
+    .map((r: Row) => r.follower)
+    .filter(Boolean)
+    .map(mapProfile);
+}
+
+/** このユーザーがフォローしている人たち */
+export async function getFollowing(userId: string): Promise<User[]> {
+  if (!supabaseEnabled) {
+    return mock.users.filter((u) => u.id !== userId).slice(1, 4);
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("follows")
+    .select("followee:profiles!follows_followee_id_fkey(*)")
+    .eq("follower_id", userId)
+    .limit(100);
+  return (data ?? [])
+    .map((r: Row) => r.followee)
+    .filter(Boolean)
+    .map(mapProfile);
 }
 
 /* =============================================================

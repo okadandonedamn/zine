@@ -619,6 +619,9 @@ export const feedItems: FeedItem[] = [
   },
 ];
 
+/** 自分がブックマークしたフィード項目ID(モック) */
+export const bookmarkedFeedIds = ["f2", "f5", "f9"];
+
 /** フィード項目IDごとのコメント(モック) */
 export const comments: Record<string, Comment[]> = {
   f1: [

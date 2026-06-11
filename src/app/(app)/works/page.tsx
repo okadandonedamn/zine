@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { WorkCard } from "@/components/work/work-card";
 import { EmptyState } from "@/components/common/empty-state";
 import { getWorks } from "@/lib/data";
@@ -19,8 +21,18 @@ export default async function WorksPage({
 
   return (
     <div className="px-4 py-6 sm:px-6">
-      <h1 className="font-display text-2xl font-bold">作品</h1>
-      <p className="mt-1 text-sm text-muted">レビューと記録が蓄積される、ZINEの書架。</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-2xl font-bold">作品</h1>
+          <p className="mt-1 text-sm text-muted">レビューと記録が蓄積される、ZINEの書架。</p>
+        </div>
+        <Link href="/works/new">
+          <Button>
+            <Plus size={15} />
+            作品を登録
+          </Button>
+        </Link>
+      </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
         <Link

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
+  Bookmark,
   BookMarked,
   Home,
   Library,
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/records", label: "記録", icon: BookMarked },
   { href: "/goals", label: "目標", icon: Target },
   { href: "/boards", label: "掲示板", icon: MessagesSquare },
+  { href: "/bookmarks", label: "ブックマーク", icon: Bookmark },
 ];
 
 export function Sidebar({
