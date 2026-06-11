@@ -70,6 +70,7 @@ export function ArticleEditor({ works }: { works: Work[] }) {
     const actionResult = await createArticle({
       title: values.title,
       body: values.body,
+      tags: values.tags,
       relatedWorkId: values.relatedWorkId,
       status,
     });

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bell,
   BookMarked,
   Home,
   Library,
@@ -26,7 +27,13 @@ const NAV = [
   { href: "/boards", label: "掲示板", icon: MessagesSquare },
 ];
 
-export function Sidebar({ meUsername }: { meUsername: string | null }) {
+export function Sidebar({
+  meUsername,
+  unreadCount = 0,
+}: {
+  meUsername: string | null;
+  unreadCount?: number;
+}) {
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col justify-between border-r border-line px-3 py-5 md:flex">
@@ -57,6 +64,26 @@ export function Sidebar({ meUsername }: { meUsername: string | null }) {
               </Link>
             );
           })}
+          <Link
+            href="/notifications"
+            aria-current={pathname === "/notifications" ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              pathname === "/notifications"
+                ? "bg-surface-2 font-semibold text-foreground"
+                : "text-muted hover:bg-surface-2 hover:text-foreground",
+            )}
+          >
+            <span className="relative">
+              <Bell size={18} strokeWidth={1.8} />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 text-[9px] font-bold text-accent-fg">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </span>
+            通知
+          </Link>
           <Link
             href={meUsername ? `/profile/${meUsername}` : "/login"}
             className={cn(

@@ -56,7 +56,11 @@ export function Composer({ user }: { user: User | null }) {
 
   async function onSubmit(values: PostForm) {
     setServerError(null);
-    const result = await createPost({ body: values.body, visibility: values.visibility });
+    const result = await createPost({
+      body: values.body,
+      tags: values.tags,
+      visibility: values.visibility,
+    });
     if (result.ok) setSubmitted(true);
     else setServerError(result.error);
   }

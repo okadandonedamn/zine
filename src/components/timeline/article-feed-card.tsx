@@ -7,6 +7,8 @@ export function ArticleFeedCard({ item }: { item: Extract<FeedItem, { type: "art
   const { article } = item;
   return (
     <FeedCardShell
+      feedItemId={item.id}
+      viewer={item.viewer}
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="ARTICLE"

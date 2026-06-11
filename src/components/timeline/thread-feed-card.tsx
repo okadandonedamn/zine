@@ -8,6 +8,8 @@ export function ThreadFeedCard({ item }: { item: Extract<FeedItem, { type: "thre
   const { thread, board } = item;
   return (
     <FeedCardShell
+      feedItemId={item.id}
+      viewer={item.viewer}
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="THREAD"

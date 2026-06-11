@@ -6,6 +6,8 @@ export function PostCard({ item }: { item: Extract<FeedItem, { type: "post" }> }
   const { post } = item;
   return (
     <FeedCardShell
+      feedItemId={item.id}
+      viewer={item.viewer}
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="POST"

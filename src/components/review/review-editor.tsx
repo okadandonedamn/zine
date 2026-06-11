@@ -94,6 +94,7 @@ export function ReviewEditor({ works }: { works: Work[] }) {
       workId: values.workId,
       rating: values.rating,
       body: values.body,
+      tags: "",
       spoiler: values.spoiler,
       visibility: values.visibility,
       axes: values.axes,

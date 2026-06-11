@@ -6,8 +6,10 @@
 import type {
   Article,
   Board,
+  Comment,
   FeedItem,
   Goal,
+  Notification,
   RecordEntry,
   Review,
   Thread,
@@ -614,6 +616,66 @@ export const feedItems: FeedItem[] = [
       comments: 5,
       bookmarks: 8,
     },
+  },
+];
+
+/** フィード項目IDごとのコメント(モック) */
+export const comments: Record<string, Comment[]> = {
+  f1: [
+    {
+      id: "c1",
+      body: "雨に濡れた箱から出てくる本、一番いい出会い方ですね。",
+      user: users[2],
+      createdAt: "2026-06-11T11:00:00+09:00",
+    },
+    {
+      id: "c2",
+      body: "マコンドは常に湿気ているので正しい状態かもしれない。",
+      user: users[3],
+      createdAt: "2026-06-11T12:30:00+09:00",
+    },
+  ],
+  f2: [
+    {
+      id: "c3",
+      body: "「時間の装置」という言い方、すごくわかります。あの衣装は時計ですよね。",
+      user: users[1],
+      createdAt: "2026-06-11T00:10:00+09:00",
+    },
+  ],
+};
+
+export const notifications: Notification[] = [
+  {
+    id: "n1",
+    kind: "like",
+    actor: users[1],
+    feedItemId: "f2",
+    read: false,
+    createdAt: "2026-06-11T09:00:00+09:00",
+  },
+  {
+    id: "n2",
+    kind: "comment",
+    actor: users[3],
+    feedItemId: "f2",
+    read: false,
+    createdAt: "2026-06-11T08:20:00+09:00",
+  },
+  {
+    id: "n3",
+    kind: "follow",
+    actor: users[4],
+    read: true,
+    createdAt: "2026-06-10T22:00:00+09:00",
+  },
+  {
+    id: "n4",
+    kind: "like",
+    actor: users[2],
+    feedItemId: "f13",
+    read: true,
+    createdAt: "2026-06-09T19:45:00+09:00",
   },
 ];
 

@@ -76,6 +76,7 @@ create table posts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   body text not null check (char_length(body) <= 500),
+  tags text[] not null default '{}',
   post_type text not null default 'normal_post' check (post_type in
     ('normal_post','review_post','article_post','record_post','thread_post','quote_post')),
   quoted_feed_item_id uuid references feed_items(id) on delete set null, -- 引用投稿
@@ -118,6 +119,7 @@ create table articles (
   user_id uuid not null references profiles(id) on delete cascade,
   title text not null,
   body text not null default '',
+  tags text[] not null default '{}',
   cover_url text,
   status text not null default 'draft' check (status in ('draft','published')),
   visibility text not null default 'public' check (visibility in ('public','private','followers')),
@@ -139,6 +141,7 @@ create table reviews (
   work_id uuid not null references works(id) on delete cascade,
   rating numeric(2,1) not null check (rating between 0.5 and 5),
   body text not null default '',
+  tags text[] not null default '{}',
   spoiler boolean not null default false,
   visibility text not null default 'public' check (visibility in ('public','private','followers')),
   created_at timestamptz not null default now()
@@ -488,9 +491,11 @@ create policy "tags insert" on tags for insert with check (auth.uid() is not nul
 create policy "taggings readable" on taggings for select using (true);
 create policy "taggings insert" on taggings for insert with check (auth.uid() is not null);
 
--- 通知: 本人のみ
+-- 通知: 読み書きは受信者本人 / 作成は行動した本人(actor)
 create policy "notifications self" on notifications for select using (auth.uid() = user_id);
 create policy "notifications update self" on notifications for update using (auth.uid() = user_id);
+create policy "notifications insert by actor" on notifications for insert
+  with check (auth.uid() = actor_id);
 
 -- 通報: 本人が出せる / モデレーターが読める
 create policy "reports insert" on reports for insert with check (auth.uid() = reporter_id);

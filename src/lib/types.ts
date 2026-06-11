@@ -189,11 +189,44 @@ export interface AxisTemplate {
   axes: [string, string, string, string, string];
 }
 
+/** ログイン中ユーザーがこのフィード項目に対して行ったリアクション */
+export interface ViewerState {
+  liked: boolean;
+  bookmarked: boolean;
+  reposted: boolean;
+}
+
+/** フィード項目へのコメント(comments テーブルに対応) */
+export interface Comment {
+  id: string;
+  body: string;
+  user: User;
+  createdAt: string;
+}
+
+export type NotificationKind =
+  | "like"
+  | "comment"
+  | "follow"
+  | "repost"
+  | "quote"
+  | "reply"
+  | "goal";
+
+export interface Notification {
+  id: string;
+  kind: NotificationKind;
+  actor?: User;
+  feedItemId?: string;
+  read: boolean;
+  createdAt: string;
+}
+
 /**
  * タイムラインの1項目。feed_items テーブルに対応する。
  * type で本体を判別する「判別共用体」— FeedItemRenderer がこれでカードを出し分ける。
  */
-export type FeedItem = { id: string; user: User; createdAt: string } & (
+export type FeedItem = { id: string; user: User; createdAt: string; viewer?: ViewerState } & (
   | { type: "post"; post: Post }
   | {
       type: "quote";

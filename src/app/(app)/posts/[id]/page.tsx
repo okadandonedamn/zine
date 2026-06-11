@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { FeedItemRenderer } from "@/components/timeline/feed-item-renderer";
-import { EmptyState } from "@/components/common/empty-state";
-import { getFeedItem } from "@/lib/data";
+import { CommentSection } from "@/components/post/comment-section";
+import { getCommentsForFeedItem, getCurrentUser, getFeedItem } from "@/lib/data";
 
 export default async function PostDetailPage({
   params,
@@ -11,6 +11,10 @@ export default async function PostDetailPage({
   const { id } = await params;
   const item = await getFeedItem(id);
   if (!item) notFound();
+  const [comments, me] = await Promise.all([
+    getCommentsForFeedItem(id),
+    getCurrentUser(),
+  ]);
 
   return (
     <div>
@@ -18,12 +22,7 @@ export default async function PostDetailPage({
         <h1 className="font-display text-lg font-semibold">投稿</h1>
       </div>
       <FeedItemRenderer item={item} />
-      <div className="p-5">
-        <EmptyState
-          title="まだコメントはありません"
-          description="最初の返信を書いてみませんか。(コメント機能はPhase 7で保存に対応します)"
-        />
-      </div>
+      <CommentSection feedItemId={id} comments={comments} me={me} />
     </div>
   );
 }

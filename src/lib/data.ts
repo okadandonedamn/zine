@@ -14,14 +14,17 @@ import {
   CATEGORY_COLORS,
   type Article,
   type Board,
+  type Comment,
   type FeedItem,
   type FeedItemType,
   type Goal,
+  type Notification,
   type RecordEntry,
   type Review,
   type Thread,
   type ThreadReply,
   type User,
+  type ViewerState,
   type Work,
   type WorkCategory,
 } from "./types";
@@ -96,7 +99,7 @@ function mapReview(row: Row): Review {
     axes: [...(row.review_scores ?? [])]
       .sort((a: Row, b: Row) => a.display_order - b.display_order)
       .map((s: Row) => ({ axis: s.axis_name, score: s.score })),
-    tags: [],
+    tags: row.tags ?? [],
     likes: 0,
     comments: 0,
     visibility: row.visibility,
@@ -128,7 +131,7 @@ function mapArticle(row: Row): Article {
     title: row.title,
     excerpt: body.split("\n\n")[0]?.slice(0, 120) ?? "",
     body,
-    tags: [],
+    tags: row.tags ?? [],
     readMinutes: Math.max(1, Math.round(body.length / 600)),
     likes: 0,
     comments: 0,
@@ -191,6 +194,38 @@ async function fetchFeed(opts: {
   const { data: rows, error } = await q;
   if (error || !rows) return [];
 
+  // ログイン中なら、自分が付けたいいね/ブックマーク/リポストの状態を引く
+  const viewerStates = new Map<string, ViewerState>();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+  if (authUser && rows.length > 0) {
+    const ids = rows.map((r) => r.id);
+    const mine = (table: string) =>
+      supabase
+        .from(table)
+        .select("feed_item_id")
+        .eq("user_id", authUser.id)
+        .in("feed_item_id", ids);
+    const [myLikes, myBookmarks, myReposts] = await Promise.all([
+      mine("likes"),
+      mine("bookmarks"),
+      mine("reposts"),
+    ]);
+    const toSet = (res: { data: { feed_item_id: string }[] | null }) =>
+      new Set((res.data ?? []).map((d) => d.feed_item_id));
+    const liked = toSet(myLikes);
+    const bookmarked = toSet(myBookmarks);
+    const reposted = toSet(myReposts);
+    for (const id of ids) {
+      viewerStates.set(id, {
+        liked: liked.has(id),
+        bookmarked: bookmarked.has(id),
+        reposted: reposted.has(id),
+      });
+    }
+  }
+
   const idsOf = (t: string) =>
     rows.filter((r) => r.item_type === t).map((r) => r.source_id);
 
@@ -227,6 +262,7 @@ async function fetchFeed(opts: {
       id: r.id as string,
       user: mapProfile(r.profile),
       createdAt: r.created_at as string,
+      viewer: viewerStates.get(r.id),
     };
     const counts = {
       likes: r.likes?.[0]?.count ?? 0,
@@ -244,7 +280,7 @@ async function fetchFeed(opts: {
         post: {
           id: p.id,
           body: p.body,
-          tags: [],
+          tags: p.tags ?? [],
           likes: counts.likes,
           reposts: counts.reposts,
           comments: counts.comments,
@@ -625,6 +661,68 @@ export async function getRepliesForThread(threadId: string): Promise<ThreadReply
     likes: r.thread_reply_likes?.[0]?.count ?? 0,
     createdAt: r.created_at,
   }));
+}
+
+/* =============================================================
+ * コメント
+ * ============================================================= */
+
+export async function getCommentsForFeedItem(feedItemId: string): Promise<Comment[]> {
+  if (!supabaseEnabled) return mock.comments[feedItemId] ?? [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("comments")
+    .select("*, user:profiles(*)")
+    .eq("feed_item_id", feedItemId)
+    .order("created_at");
+  return (data ?? [])
+    .filter((c: Row) => c.user)
+    .map((c: Row) => ({
+      id: c.id,
+      body: c.body,
+      user: mapProfile(c.user),
+      createdAt: c.created_at,
+    }));
+}
+
+/* =============================================================
+ * 通知
+ * ============================================================= */
+
+export async function getNotifications(): Promise<Notification[]> {
+  if (!supabaseEnabled) return mock.notifications;
+  const me = await getCurrentUser();
+  if (!me) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("notifications")
+    .select("*, actor:profiles!notifications_actor_id_fkey(*)")
+    .eq("user_id", me.id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return (data ?? []).map((n: Row) => ({
+    id: n.id,
+    kind: n.kind,
+    actor: n.actor ? mapProfile(n.actor) : undefined,
+    feedItemId: n.feed_item_id ?? undefined,
+    read: n.read,
+    createdAt: n.created_at,
+  }));
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  if (!supabaseEnabled) return mock.notifications.filter((n) => !n.read).length;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return 0;
+  const { count } = await supabase
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("read", false);
+  return count ?? 0;
 }
 
 /* =============================================================

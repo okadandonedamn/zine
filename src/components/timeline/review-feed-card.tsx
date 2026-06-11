@@ -10,6 +10,8 @@ export function ReviewFeedCard({ item }: { item: Extract<FeedItem, { type: "revi
   const { review, work } = item;
   return (
     <FeedCardShell
+      feedItemId={item.id}
+      viewer={item.viewer}
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="REVIEW"

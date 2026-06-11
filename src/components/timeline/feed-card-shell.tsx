@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Bookmark, Heart, MessageCircle, Repeat2 } from "lucide-react";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { FeedActions } from "./feed-actions";
 import { timeAgo } from "@/lib/utils";
-import type { User } from "@/lib/types";
+import type { User, ViewerState } from "@/lib/types";
 
 /**
  * 全フィードカード共通の外殻。
@@ -10,6 +10,7 @@ import type { User } from "@/lib/types";
  * 種別ごとのデザイン差は children 側で出し、統一感はここで担保する。
  */
 export function FeedCardShell({
+  feedItemId,
   user,
   createdAt,
   typeLabel,
@@ -17,7 +18,9 @@ export function FeedCardShell({
   actionText,
   children,
   counts,
+  viewer,
 }: {
+  feedItemId: string;
   user: User;
   createdAt: string;
   typeLabel: string;
@@ -27,6 +30,7 @@ export function FeedCardShell({
   actionText?: string;
   children: React.ReactNode;
   counts?: { likes: number; comments: number; reposts?: number; bookmarks?: number };
+  viewer?: ViewerState;
 }) {
   return (
     <article className="border-b border-line px-4 py-4 transition-colors hover:bg-surface/60 sm:px-5">
@@ -59,36 +63,12 @@ export function FeedCardShell({
             )}
           </div>
           {counts && (
-            <div className="mt-3 flex max-w-sm items-center justify-between text-subtle">
-              <button
-                aria-label={`コメント ${counts.comments}件`}
-                className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-accent"
-              >
-                <MessageCircle size={15} aria-hidden />
-                {counts.comments > 0 && counts.comments}
-              </button>
-              <button
-                aria-label={`リポスト ${counts.reposts ?? 0}件`}
-                className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-accent"
-              >
-                <Repeat2 size={16} aria-hidden />
-                {(counts.reposts ?? 0) > 0 && counts.reposts}
-              </button>
-              <button
-                aria-label={`いいね ${counts.likes}件`}
-                className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-accent"
-              >
-                <Heart size={15} aria-hidden />
-                {counts.likes > 0 && counts.likes}
-              </button>
-              <button
-                aria-label="ブックマーク"
-                className="flex cursor-pointer items-center gap-1.5 text-xs transition-colors hover:text-accent"
-              >
-                <Bookmark size={15} aria-hidden />
-                {(counts.bookmarks ?? 0) > 0 && counts.bookmarks}
-              </button>
-            </div>
+            <FeedActions
+              feedItemId={feedItemId}
+              counts={counts}
+              viewer={viewer}
+              commentHref={href ?? `/posts/${feedItemId}`}
+            />
           )}
         </div>
       </div>

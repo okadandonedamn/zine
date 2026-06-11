@@ -6,6 +6,8 @@ export function QuoteCard({ item }: { item: Extract<FeedItem, { type: "quote" }>
   const { post, quoted } = item;
   return (
     <FeedCardShell
+      feedItemId={item.id}
+      viewer={item.viewer}
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="QUOTE"

@@ -22,9 +22,39 @@ async function requireUser() {
 
 const NEEDS_LOGIN = "ログインが必要です。/login からサインインしてください。";
 
+/** タグ入力文字列("a, b, c")を配列に正規化 */
+function parseTags(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[,、]/)
+        .map((t) => t.trim().replace(/^#/, ""))
+        .filter((t) => t.length > 0 && t.length <= 30),
+    ),
+  ].slice(0, 5);
+}
+
+/** 通知を作成(自分自身への通知は作らない) */
+async function notify(opts: {
+  userId: string;
+  actorId: string;
+  kind: string;
+  feedItemId?: string;
+}) {
+  if (opts.userId === opts.actorId) return;
+  const supabase = await createClient();
+  await supabase.from("notifications").insert({
+    user_id: opts.userId,
+    actor_id: opts.actorId,
+    kind: opts.kind,
+    feed_item_id: opts.feedItemId ?? null,
+  });
+}
+
 /* ---------- 短文投稿 ---------- */
 const postInput = z.object({
   body: z.string().min(1).max(500),
+  tags: z.string(),
   visibility: z.enum(["public", "private"]),
 });
 
@@ -38,6 +68,7 @@ export async function createPost(input: z.infer<typeof postInput>): Promise<Acti
   const { error } = await supabase.from("posts").insert({
     user_id: user.id,
     body: parsed.data.body,
+    tags: parseTags(parsed.data.tags),
     visibility: parsed.data.visibility,
   });
   if (error) return { ok: false, error: error.message };
@@ -50,6 +81,7 @@ const reviewInput = z.object({
   workId: z.string().min(1),
   rating: z.number().min(0.5).max(5),
   body: z.string().min(10),
+  tags: z.string().default(""),
   spoiler: z.boolean(),
   visibility: z.enum(["public", "private"]),
   axes: z
@@ -73,6 +105,7 @@ export async function createReview(
       work_id: parsed.data.workId,
       rating: parsed.data.rating,
       body: parsed.data.body,
+      tags: parseTags(parsed.data.tags),
       spoiler: parsed.data.spoiler,
       visibility: parsed.data.visibility,
     })
@@ -271,6 +304,7 @@ export async function createReply(input: {
 const articleInput = z.object({
   title: z.string().min(1).max(80),
   body: z.string().min(50),
+  tags: z.string().default(""),
   relatedWorkId: z.string(),
   status: z.enum(["draft", "published"]),
 });
@@ -291,6 +325,7 @@ export async function createArticle(
       user_id: user.id,
       title: d.title,
       body: d.body,
+      tags: parseTags(d.tags),
       status: d.status,
       published_at: d.status === "published" ? new Date().toISOString() : null,
     })
@@ -356,6 +391,116 @@ export async function updateAvatarUrl(url: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/* ---------- リアクション(いいね / ブックマーク / リポスト) ---------- */
+
+async function toggleReaction(
+  table: "likes" | "bookmarks" | "reposts",
+  feedItemId: string,
+  notifyKind?: string,
+): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data: existing } = await supabase
+    .from(table)
+    .select("feed_item_id")
+    .eq("user_id", user.id)
+    .eq("feed_item_id", feedItemId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from(table)
+      .delete()
+      .eq("user_id", user.id)
+      .eq("feed_item_id", feedItemId);
+  } else {
+    const { error } = await supabase
+      .from(table)
+      .insert({ user_id: user.id, feed_item_id: feedItemId });
+    if (error) return { ok: false, error: error.message };
+    if (notifyKind) {
+      const { data: item } = await supabase
+        .from("feed_items")
+        .select("user_id")
+        .eq("id", feedItemId)
+        .single();
+      if (item)
+        await notify({
+          userId: item.user_id,
+          actorId: user.id,
+          kind: notifyKind,
+          feedItemId,
+        });
+    }
+  }
+  return { ok: true };
+}
+
+export async function toggleLike(feedItemId: string): Promise<ActionResult> {
+  return toggleReaction("likes", feedItemId, "like");
+}
+
+export async function toggleBookmark(feedItemId: string): Promise<ActionResult> {
+  return toggleReaction("bookmarks", feedItemId);
+}
+
+export async function toggleRepost(feedItemId: string): Promise<ActionResult> {
+  return toggleReaction("reposts", feedItemId, "repost");
+}
+
+/* ---------- コメント ---------- */
+
+export async function createComment(input: {
+  feedItemId: string;
+  body: string;
+}): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const body = input.body.trim();
+  if (!body || body.length > 500)
+    return { ok: false, error: "コメントは1〜500文字で入力してください" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { error } = await supabase.from("comments").insert({
+    user_id: user.id,
+    feed_item_id: input.feedItemId,
+    body,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  const { data: item } = await supabase
+    .from("feed_items")
+    .select("user_id")
+    .eq("id", input.feedItemId)
+    .single();
+  if (item)
+    await notify({
+      userId: item.user_id,
+      actorId: user.id,
+      kind: "comment",
+      feedItemId: input.feedItemId,
+    });
+  revalidatePath(`/posts/${input.feedItemId}`);
+  return { ok: true };
+}
+
+/* ---------- 通知 ---------- */
+
+export async function markNotificationsRead(): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", user.id)
+    .eq("read", false);
+  revalidatePath("/notifications");
+  return { ok: true };
+}
+
 /* ---------- フォロー ---------- */
 export async function toggleFollow(followeeId: string): Promise<ActionResult> {
   if (!supabaseEnabled) return { ok: true, mock: true };
@@ -381,6 +526,7 @@ export async function toggleFollow(followeeId: string): Promise<ActionResult> {
       .from("follows")
       .insert({ follower_id: user.id, followee_id: followeeId });
     if (error) return { ok: false, error: error.message };
+    await notify({ userId: followeeId, actorId: user.id, kind: "follow" });
   }
   revalidatePath("/home");
   return { ok: true };
