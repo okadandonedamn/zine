@@ -5,7 +5,6 @@
  */
 import type {
   Article,
-  Board,
   Comment,
   FeedItem,
   Goal,
@@ -382,55 +381,40 @@ export const articles: Article[] = [
   },
 ];
 
-export const boards: Board[] = [
-  { id: "b1", name: "映画板", description: "新作旧作問わず。ネタバレはスレッドのルールに従って。", category: "film", threadCount: 482 },
-  { id: "b2", name: "文学板", description: "小説・詩・批評。再読の発見、翻訳の比較、なんでも。", category: "literature", threadCount: 391 },
-  { id: "b3", name: "音楽板", description: "ジャンル不問。名盤語りからライブレポまで。", category: "music", threadCount: 530 },
-  { id: "b4", name: "美術・展示板", description: "展覧会情報と感想。巡回情報の共有歓迎。", category: "exhibition", threadCount: 214 },
-  { id: "b5", name: "ファッション板", description: "コレクション批評、ブランド史、装いの思想。", category: "fashion", threadCount: 158 },
-  { id: "b6", name: "雑談板", description: "文化系の雑談すべて。今日観たもの聴いたもの。", category: "general", threadCount: 627 },
-];
-
 export const threads: Thread[] = [
   {
     id: "t1",
-    boardId: "b1",
+    workId: "w1",
     title: "【ネタバレ可】『花様年華』のラストをどう解釈するか",
     body: "アンコールワットの穴に囁くシーン、初見から20年考え続けている。秘密を「葬る」行為だと思っていたが、最近は「保存」なのではと思い始めた。みんなの解釈を聞きたい。",
     replyCount: 47,
-    anonymous: false,
-    workId: "w1",
     createdAt: "2026-06-09T21:00:00+09:00",
     lastReplyAt: "2026-06-11T09:30:00+09:00",
   },
   {
     id: "t2",
-    boardId: "b2",
+    workId: "w2",
     title: "村上春樹の「やれやれ」を真面目に数えるスレ",
     body: "全作品の「やれやれ」を数えて文脈ごとに分類しています。現在『ダンス・ダンス・ダンス』まで完了。協力者求む。",
     replyCount: 89,
-    anonymous: true,
-    workId: "w2",
     createdAt: "2026-06-07T13:00:00+09:00",
     lastReplyAt: "2026-06-10T23:10:00+09:00",
   },
   {
     id: "t3",
-    boardId: "b3",
-    title: "「夜に聴く一枚」を真剣に決めるスレ",
-    body: "条件: 深夜0時以降、部屋を暗くして、通しで聴ける一枚。理由込みで頼む。",
+    workId: "w4",
+    title: "『LONG SEASON』を深夜0時以降に聴く会",
+    body: "条件: 部屋を暗くして、通しで。聴いた夜の報告と、どの瞬間に「落ちた」かを書き込むスレ。",
     replyCount: 132,
-    anonymous: true,
     createdAt: "2026-06-05T23:30:00+09:00",
     lastReplyAt: "2026-06-11T01:45:00+09:00",
   },
   {
     id: "t4",
-    boardId: "b4",
-    title: "2026年下半期、行くべき展示を挙げていく",
-    body: "巡回情報・会期・混雑傾向もあれば。まず自分から: 7月の大阪中之島美術館。",
+    workId: "w5",
+    title: "リヒター展、どの部屋で一番長く立ち止まったか",
+    body: "自分は「ビルケナウ」の部屋で30分。みんなの滞留地点と理由を聞きたい。巡回情報もあれば。",
     replyCount: 28,
-    anonymous: false,
     createdAt: "2026-06-08T10:00:00+09:00",
     lastReplyAt: "2026-06-10T18:00:00+09:00",
   },
@@ -443,6 +427,7 @@ export const threadReplies: ThreadReply[] = [
   { id: "tr4", threadId: "t1", number: 4, name: "名無しの批評家", body: "60年代の香港からカンボジアという場所の移動も効いてる。個人の秘密が歴史の遺跡に預けられる。私的な時間が公的な時間に接続される瞬間。", likes: 41, createdAt: "2026-06-10T00:13:00+09:00" },
   { id: "tr5", threadId: "t1", number: 5, name: "名無しの批評家", body: ">>4 その読みでいくと、『2046』が「預けた秘密を引き出しに戻る話」になるのが綺麗すぎる。", quoteNumber: 4, likes: 19, createdAt: "2026-06-10T08:40:00+09:00" },
   { id: "tr6", threadId: "t1", number: 6, name: "白昼夢書店", body: "穴に囁く行為自体、チャウが小説家だということと不可分だと思う。書けないことを物理的に「外部化」する。作家の業の話でもある。", likes: 15, createdAt: "2026-06-11T09:30:00+09:00" },
+  { id: "tr7", threadId: "t1", number: 7, name: "名無しの批評家", body: "", likes: 0, deleted: true, createdAt: "2026-06-11T09:32:00+09:00" },
 ];
 
 export const goals: Goal[] = [
@@ -496,7 +481,7 @@ export const feedItems: FeedItem[] = [
     user: users[0],
     createdAt: "2026-06-09T21:00:00+09:00",
     thread: threads[0],
-    board: boards[0],
+    work: works[0],
   },
   {
     id: "f5",
@@ -577,7 +562,7 @@ export const feedItems: FeedItem[] = [
     user: users[3],
     createdAt: "2026-06-05T23:30:00+09:00",
     thread: threads[2],
-    board: boards[2],
+    work: works[3],
   },
   {
     id: "f13",

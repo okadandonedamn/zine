@@ -27,6 +27,13 @@ export const CATEGORY_LABELS: Record<WorkCategory, string> = {
   other: "その他",
 };
 
+/**
+ * UI上で表示するカテゴリ(設計書v1.1 判断10)。
+ * 最初は映画+文学から。スキーマは全カテゴリを保持しているので、
+ * ここに足すだけで第二波(音楽など)を解放できる。
+ */
+export const ACTIVE_CATEGORIES: WorkCategory[] = ["film", "literature"];
+
 /** カレンダーのドットや統計グラフで使うカテゴリ色 */
 export const CATEGORY_COLORS: Record<WorkCategory, string> = {
   film: "#c2563a",
@@ -90,7 +97,11 @@ export interface Post {
 export interface Review {
   id: string;
   workId: string;
-  rating: number; // 0.5刻み、最大5
+  /**
+   * 星評価の表示値。真実は本棚(records.rating)にあり、
+   * 表示時にJOINして埋める(設計書v1.1 判断4)。reviewsテーブルは星を持たない。
+   */
+  rating: number;
   body: string;
   spoiler: boolean;
   axes: AxisScore[];
@@ -129,6 +140,8 @@ export interface RecordEntry {
   id: string;
   workId: string;
   status: RecordStatus;
+  /** 本棚の星(0.5〜5)。評価の唯一の真実 */
+  rating?: number;
   date: string; // ISO
   durationMinutes?: number;
   pages?: number;
@@ -150,22 +163,15 @@ export interface Goal {
   unit: string; // 本・冊・枚・回 など
 }
 
-export interface Board {
-  id: string;
-  name: string;
-  description: string;
-  category: WorkCategory | "general";
-  threadCount: number;
-}
-
+/**
+ * 語り場のスレッド。必ず作品に従属する(設計書v1.1 判断6。独立した板は無い)。
+ */
 export interface Thread {
   id: string;
-  boardId: string;
+  workId: string;
   title: string;
   body: string;
   replyCount: number;
-  anonymous: boolean;
-  workId?: string;
   createdAt: string;
   lastReplyAt: string;
 }
@@ -174,10 +180,12 @@ export interface ThreadReply {
   id: string;
   threadId: string;
   number: number;
-  name: string; // 匿名なら「名無しの批評家」など
+  name: string; // ハンドル(表示名)。匿名は提供しない(判断7)
   body: string;
   quoteNumber?: number;
   likes: number;
+  /** 論理削除済み。行とレス番号は残り「削除済み」と表示する */
+  deleted?: boolean;
   createdAt: string;
 }
 
@@ -236,7 +244,7 @@ export type FeedItem = { id: string; user: User; createdAt: string; viewer?: Vie
   | { type: "review"; review: Review; work: Work }
   | { type: "record"; record: RecordEntry; work: Work }
   | { type: "article"; article: Article }
-  | { type: "thread"; thread: Thread; board: Board }
+  | { type: "thread"; thread: Thread; work: Work }
 );
 
 export type FeedItemType = FeedItem["type"];

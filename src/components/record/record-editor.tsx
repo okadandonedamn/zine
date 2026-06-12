@@ -46,7 +46,8 @@ export function RecordEditor({ works }: { works: Work[] }) {
       tracks: "",
       place: "",
       memo: "",
-      visibility: "public",
+      // 時間ログは既定非公開(v1.1 判断11)。日記は守られ、批評は開かれる
+      visibility: "private",
     },
   });
 
@@ -197,8 +198,8 @@ export function RecordEditor({ works }: { works: Work[] }) {
           {...form.register("visibility")}
           className="h-9 rounded-md border border-line bg-background px-3 text-sm"
         >
+          <option value="private">非公開(自分だけの日記)</option>
           <option value="public">公開(タイムラインに流れる)</option>
-          <option value="private">非公開(自分だけ)</option>
         </select>
         <Button type="submit" className="ml-auto" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "送信中…" : "記録する"}

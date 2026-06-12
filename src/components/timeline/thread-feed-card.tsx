@@ -2,10 +2,10 @@ import { MessagesSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { FeedCardShell } from "./feed-card-shell";
 import { timeAgo } from "@/lib/utils";
-import type { FeedItem } from "@/lib/types";
+import { CATEGORY_LABELS, type FeedItem } from "@/lib/types";
 
 export function ThreadFeedCard({ item }: { item: Extract<FeedItem, { type: "thread" }> }) {
-  const { thread, board } = item;
+  const { thread, work } = item;
   return (
     <FeedCardShell
       feedItemId={item.id}
@@ -13,14 +13,15 @@ export function ThreadFeedCard({ item }: { item: Extract<FeedItem, { type: "thre
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="THREAD"
-      actionText={`${board.name}にスレッドを立てました`}
+      actionText={`『${work.title}』の語り場にスレッドを立てました`}
       href={`/threads/${thread.id}`}
       counts={{ likes: 0, comments: thread.replyCount }}
     >
       <div className="rounded-md border border-line bg-background/60 p-4">
         <div className="flex items-center gap-2">
-          <Badge variant="outline">{board.name}</Badge>
-          {thread.anonymous && <Badge>匿名スレ</Badge>}
+          <Badge variant="outline">
+            {work.title} / {CATEGORY_LABELS[work.category]}
+          </Badge>
         </div>
         <h3 className="mt-2 font-display text-base font-semibold leading-snug">
           {thread.title}

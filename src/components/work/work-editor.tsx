@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createWork } from "@/lib/actions";
-import { CATEGORY_LABELS, type WorkCategory } from "@/lib/types";
+import { ACTIVE_CATEGORIES, CATEGORY_LABELS, type Work, type WorkCategory } from "@/lib/types";
 
 const workSchema = z.object({
   title: z.string().min(1, "タイトルを入力してください").max(100, "100文字まで"),
@@ -23,7 +23,7 @@ const workSchema = z.object({
 
 type WorkForm = z.infer<typeof workSchema>;
 
-export function WorkEditor() {
+export function WorkEditor({ existingWorks }: { existingWorks: Work[] }) {
   const router = useRouter();
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -67,6 +67,19 @@ export function WorkEditor() {
     );
   }
 
+  // 「先に検索」: 入力中のタイトルに似た既存作品を出し、重複登録を防ぐ
+  const title = form.watch("title").trim();
+  const possibleDuplicates =
+    title.length >= 2
+      ? existingWorks
+          .filter(
+            (w) =>
+              w.title.toLowerCase().includes(title.toLowerCase()) ||
+              title.toLowerCase().includes(w.title.toLowerCase()),
+          )
+          .slice(0, 3)
+      : [];
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-xl space-y-5">
       <div>
@@ -74,6 +87,28 @@ export function WorkEditor() {
         <Input {...form.register("title")} placeholder="花様年華" />
         {form.formState.errors.title && (
           <p className="mt-1 text-xs text-accent">{form.formState.errors.title.message}</p>
+        )}
+        {possibleDuplicates.length > 0 && (
+          <div className="mt-2 rounded-md border border-accent/40 bg-accent/5 p-3">
+            <p className="text-xs font-medium text-accent">
+              もう書架にあるかもしれません。先に確認してください:
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {possibleDuplicates.map((w) => (
+                <li key={w.id}>
+                  <Link
+                    href={`/works/${w.id}`}
+                    className="text-sm text-foreground hover:underline"
+                  >
+                    {w.title}
+                    <span className="ml-2 text-xs text-subtle">
+                      {CATEGORY_LABELS[w.category]} / {w.creator} / {w.year}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
@@ -85,13 +120,11 @@ export function WorkEditor() {
             className="h-9 w-full rounded-md border border-line bg-background px-3 text-sm"
           >
             <option value="">選ぶ…</option>
-            {(Object.entries(CATEGORY_LABELS) as [WorkCategory, string][]).map(
-              ([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ),
-            )}
+            {ACTIVE_CATEGORIES.map((key) => (
+              <option key={key} value={key}>
+                {CATEGORY_LABELS[key]}
+              </option>
+            ))}
           </select>
           {form.formState.errors.category && (
             <p className="mt-1 text-xs text-accent">

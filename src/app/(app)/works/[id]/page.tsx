@@ -8,6 +8,7 @@ import { RatingStars } from "@/components/review/rating-stars";
 import { RadarRatingChart } from "@/components/review/radar-rating-chart";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { EmptyState } from "@/components/common/empty-state";
+import { FollowWorkButton } from "@/components/work/follow-work-button";
 import {
   getArticlesForWork,
   getRecordsForWork,
@@ -15,6 +16,7 @@ import {
   getThreadsForWork,
   getUsers,
   getWork,
+  isFollowingWork,
 } from "@/lib/data";
 import { statusLabel } from "@/lib/record-status";
 import { CATEGORY_LABELS, type AxisScore } from "@/lib/types";
@@ -56,12 +58,13 @@ export default async function WorkDetailPage({
   const work = await getWork(id);
   if (!work) notFound();
 
-  const [reviews, records, threads, articles, users] = await Promise.all([
+  const [reviews, records, threads, articles, users, followingWork] = await Promise.all([
     getReviewsForWork(id),
     getRecordsForWork(id),
     getThreadsForWork(id),
     getArticlesForWork(id),
     getUsers(),
+    isFollowingWork(id),
   ]);
   const avg = averageAxes(reviews.map((r) => r.axes));
 
@@ -104,7 +107,7 @@ export default async function WorkDetailPage({
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Link href="/reviews/new">
+          <Link href={`/reviews/new?work=${work.id}`}>
             <Button>
               <PenLine size={15} />
               レビューを書く
@@ -116,12 +119,13 @@ export default async function WorkDetailPage({
               記録する
             </Button>
           </Link>
-          <Link href="/threads/new">
+          <Link href={`/threads/new?work=${work.id}`}>
             <Button variant="outline">
               <MessagesSquare size={15} />
               スレッドを立てる
             </Button>
           </Link>
+          <FollowWorkButton workId={work.id} initialFollowing={followingWork} />
         </div>
 
         {/* みんなの五角形(平均) */}
@@ -187,7 +191,10 @@ export default async function WorkDetailPage({
         {/* 関連スレッド・記事 */}
         {threads.length > 0 && (
           <section>
-            <h2 className="font-display text-lg font-semibold">関連スレッド</h2>
+            <h2 className="font-display text-lg font-semibold">語り場</h2>
+            <p className="mt-1 text-xs text-subtle">
+              この作品について深く語るスレッド。ネタバレはスレッドのルールに従って。
+            </p>
             <div className="mt-3 space-y-2">
               {threads.map((t) => (
                 <Link

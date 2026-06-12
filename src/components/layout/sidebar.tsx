@@ -8,7 +8,6 @@ import {
   BookMarked,
   Home,
   Library,
-  MessagesSquare,
   PenLine,
   Search,
   Settings,
@@ -25,7 +24,6 @@ const NAV = [
   { href: "/works", label: "作品", icon: Library },
   { href: "/records", label: "記録", icon: BookMarked },
   { href: "/goals", label: "目標", icon: Target },
-  { href: "/boards", label: "掲示板", icon: MessagesSquare },
   { href: "/bookmarks", label: "ブックマーク", icon: Bookmark },
 ];
 

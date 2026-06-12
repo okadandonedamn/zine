@@ -13,7 +13,6 @@ import * as mock from "./mock-data";
 import {
   CATEGORY_COLORS,
   type Article,
-  type Board,
   type Comment,
   type FeedItem,
   type FeedItemType,
@@ -67,7 +66,11 @@ function mapProfile(row: Row): User {
 }
 
 function mapWork(row: Row): Work {
-  const ratings: number[] = (row.reviews ?? []).map((r: Row) => Number(r.rating));
+  // 平均評価 = 本棚(records)に付いた星の平均(設計書v1.1 判断4)
+  const ratings: number[] = (row.records ?? [])
+    .map((r: Row) => r.rating)
+    .filter((r: unknown) => r != null)
+    .map(Number);
   const avg =
     ratings.length > 0
       ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10
@@ -82,18 +85,35 @@ function mapWork(row: Row): Work {
     description: row.description ?? "",
     tags: [],
     avgRating: avg,
-    reviewCount: ratings.length,
-    recordCount: row.records?.[0]?.count ?? 0,
+    reviewCount: row.reviews?.[0]?.count ?? 0,
+    recordCount: (row.records ?? []).length,
     coverFrom: base,
     coverTo: "#15130f",
   };
 }
 
-function mapReview(row: Row): Review {
+/** レビューの星を本棚(records)から引く。キーは `${userId}:${workId}` */
+async function fetchShelfRatings(rows: Row[]): Promise<Map<string, number>> {
+  if (rows.length === 0) return new Map();
+  const supabase = await createClient();
+  const userIds = [...new Set(rows.map((r) => r.user_id))];
+  const workIds = [...new Set(rows.map((r) => r.work_id))];
+  const { data } = await supabase
+    .from("records")
+    .select("user_id, work_id, rating")
+    .in("user_id", userIds)
+    .in("work_id", workIds)
+    .not("rating", "is", null);
+  return new Map(
+    (data ?? []).map((r: Row) => [`${r.user_id}:${r.work_id}`, Number(r.rating)]),
+  );
+}
+
+function mapReview(row: Row, shelfRating?: number): Review {
   return {
     id: row.id,
     workId: row.work_id,
-    rating: Number(row.rating),
+    rating: shelfRating ?? 0,
     body: row.body ?? "",
     spoiler: row.spoiler ?? false,
     axes: [...(row.review_scores ?? [])]
@@ -112,6 +132,7 @@ function mapSession(row: Row): RecordEntry {
     id: row.id,
     workId: row.record?.work_id ?? row.record?.work?.id ?? "",
     status: row.record?.status ?? "done",
+    rating: row.record?.rating != null ? Number(row.record.rating) : undefined,
     date: row.consumed_at,
     durationMinutes: row.duration_minutes ?? undefined,
     pages: row.pages ?? undefined,
@@ -145,28 +166,16 @@ function mapArticle(row: Row): Article {
 function mapThread(row: Row): Thread {
   return {
     id: row.id,
-    boardId: row.board_id,
+    workId: row.work_id,
     title: row.title,
     body: row.first_reply_body ?? "",
-    replyCount: row.thread_replies?.[0]?.count ?? 0,
-    anonymous: row.anonymous ?? false,
-    workId: row.work_id ?? undefined,
+    replyCount: row.reply_count ?? row.thread_replies?.[0]?.count ?? 0,
     createdAt: row.created_at,
     lastReplyAt: row.last_reply_at,
   };
 }
 
-function mapBoard(row: Row): Board {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description ?? "",
-    category: row.category ?? "general",
-    threadCount: row.threads?.[0]?.count ?? 0,
-  };
-}
-
-const WORK_SELECT = "*, reviews(rating), records(count)";
+const WORK_SELECT = "*, records(rating), reviews(count)";
 
 /* =============================================================
  * タイムライン (Timeline First の核)
@@ -246,16 +255,15 @@ async function fetchFeed(opts: {
     ),
     fetchByIds(
       "record_sessions",
-      `*, record:records(status, work_id, work:works(${WORK_SELECT}))`,
+      `*, record:records(status, work_id, rating, work:works(${WORK_SELECT}))`,
       idsOf("record"),
     ),
     fetchByIds("articles", "*, article_works(work_id)", idsOf("article")),
-    fetchByIds(
-      "threads",
-      "*, board:boards(*, threads(count)), thread_replies(count)",
-      idsOf("thread"),
-    ),
+    fetchByIds("threads", `*, work:works(${WORK_SELECT})`, idsOf("thread")),
   ]);
+
+  // レビューの星は本棚から(判断4)
+  const shelfRatings = await fetchShelfRatings([...reviews.values()]);
 
   const items: FeedItem[] = [];
   for (const r of rows) {
@@ -275,7 +283,7 @@ async function fetchFeed(opts: {
 
     if (r.item_type === "post" || r.item_type === "quote") {
       const p = posts.get(r.source_id);
-      if (!p) continue;
+      if (!p || p.deleted_at) continue; // 論理削除済みはタイムラインに出さない
       items.push({
         ...base,
         type: "post",
@@ -292,10 +300,15 @@ async function fetchFeed(opts: {
     } else if (r.item_type === "review") {
       const rv = reviews.get(r.source_id);
       if (!rv?.work) continue;
+      const shelfRating = shelfRatings.get(`${rv.user_id}:${rv.work_id}`);
       items.push({
         ...base,
         type: "review",
-        review: { ...mapReview(rv), likes: counts.likes, comments: counts.comments },
+        review: {
+          ...mapReview(rv, shelfRating),
+          likes: counts.likes,
+          comments: counts.comments,
+        },
         work: mapWork(rv.work),
       });
     } else if (r.item_type === "record") {
@@ -317,12 +330,12 @@ async function fetchFeed(opts: {
       });
     } else if (r.item_type === "thread") {
       const t = threads.get(r.source_id);
-      if (!t?.board) continue;
+      if (!t?.work || t.deleted_at) continue;
       items.push({
         ...base,
         type: "thread",
         thread: mapThread(t),
-        board: mapBoard(t.board),
+        work: mapWork(t.work),
       });
     }
     // reply / repost / goal_achievement は将来のカード追加で対応
@@ -350,9 +363,10 @@ export async function getTimeline(tab: TimelineTab): Promise<FeedItem[]> {
     const supabase = await createClient();
     const { data } = await supabase
       .from("follows")
-      .select("followee_id")
-      .eq("follower_id", me.id);
-    const ids = (data ?? []).map((f) => f.followee_id);
+      .select("followee_user_id")
+      .eq("follower_id", me.id)
+      .not("followee_user_id", "is", null);
+    const ids = (data ?? []).map((f) => f.followee_user_id);
     if (ids.length === 0) return [];
     return fetchFeed({ userIds: ids });
   }
@@ -456,7 +470,7 @@ export async function getFollowers(userId: string): Promise<User[]> {
   const { data } = await supabase
     .from("follows")
     .select("follower:profiles!follows_follower_id_fkey(*)")
-    .eq("followee_id", userId)
+    .eq("followee_user_id", userId)
     .limit(100);
   return (data ?? [])
     .map((r: Row) => r.follower)
@@ -472,13 +486,31 @@ export async function getFollowing(userId: string): Promise<User[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("follows")
-    .select("followee:profiles!follows_followee_id_fkey(*)")
+    .select("followee:profiles!follows_followee_user_id_fkey(*)")
     .eq("follower_id", userId)
+    .not("followee_user_id", "is", null)
     .limit(100);
   return (data ?? [])
     .map((r: Row) => r.followee)
     .filter(Boolean)
     .map(mapProfile);
+}
+
+/** ログイン中ユーザーがこの作品をフォローしているか(多態フォロー: 作品) */
+export async function isFollowingWork(workId: string): Promise<boolean> {
+  if (!supabaseEnabled) return false;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data } = await supabase
+    .from("follows")
+    .select("id")
+    .eq("follower_id", user.id)
+    .eq("work_id", workId)
+    .maybeSingle();
+  return Boolean(data);
 }
 
 /* =============================================================
@@ -515,7 +547,9 @@ export async function getReview(id: string): Promise<Review | undefined> {
   }
   const supabase = await createClient();
   const { data } = await supabase.from("reviews").select(REVIEW_SELECT).eq("id", id).single();
-  return data ? mapReview(data) : undefined;
+  if (!data) return undefined;
+  const ratings = await fetchShelfRatings([data]);
+  return mapReview(data, ratings.get(`${data.user_id}:${data.work_id}`));
 }
 
 export async function getReviewsForWork(workId: string): Promise<Review[]> {
@@ -534,7 +568,9 @@ export async function getReviewsForWork(workId: string): Promise<Review[]> {
     .select(REVIEW_SELECT)
     .eq("work_id", workId)
     .order("created_at", { ascending: false });
-  return (data ?? []).map(mapReview);
+  const rows = data ?? [];
+  const ratings = await fetchShelfRatings(rows);
+  return rows.map((r: Row) => mapReview(r, ratings.get(`${r.user_id}:${r.work_id}`)));
 }
 
 /* =============================================================
@@ -644,50 +680,19 @@ export async function getStreak(): Promise<number> {
 }
 
 /* =============================================================
- * 掲示板
+ * 語り場(スレッドは作品に従属する。boardsは存在しない)
  * ============================================================= */
-
-export async function getBoards(): Promise<Board[]> {
-  if (!supabaseEnabled) return mock.boards;
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("boards")
-    .select("*, threads(count)")
-    .order("display_order");
-  return (data ?? []).map(mapBoard);
-}
-
-export async function getBoard(id: string): Promise<Board | undefined> {
-  if (!supabaseEnabled) return mock.boards.find((b) => b.id === id);
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("boards")
-    .select("*, threads(count)")
-    .eq("id", id)
-    .single();
-  return data ? mapBoard(data) : undefined;
-}
 
 export async function getThread(id: string): Promise<Thread | undefined> {
   if (!supabaseEnabled) return mock.threads.find((t) => t.id === id);
   const supabase = await createClient();
   const { data } = await supabase
     .from("threads")
-    .select("*, thread_replies(count)")
+    .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
   return data ? mapThread(data) : undefined;
-}
-
-export async function getThreadsForBoard(boardId: string): Promise<Thread[]> {
-  if (!supabaseEnabled) return mock.threads.filter((t) => t.boardId === boardId);
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("threads")
-    .select("*, thread_replies(count)")
-    .eq("board_id", boardId)
-    .order("last_reply_at", { ascending: false });
-  return (data ?? []).map(mapThread);
 }
 
 export async function getThreadsForWork(workId: string): Promise<Thread[]> {
@@ -695,14 +700,17 @@ export async function getThreadsForWork(workId: string): Promise<Thread[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("threads")
-    .select("*, thread_replies(count)")
-    .eq("work_id", workId);
+    .select("*")
+    .eq("work_id", workId)
+    .is("deleted_at", null)
+    .order("last_reply_at", { ascending: false });
   return (data ?? []).map(mapThread);
 }
 
 export async function getRepliesForThread(threadId: string): Promise<ThreadReply[]> {
   if (!supabaseEnabled) return mock.threadReplies.filter((r) => r.threadId === threadId);
   const supabase = await createClient();
+  // 論理削除された行も返す(レス番号の保全)。表示側で「削除済み」処理
   const { data } = await supabase
     .from("thread_replies")
     .select("*, thread_reply_likes(count)")
@@ -713,9 +721,10 @@ export async function getRepliesForThread(threadId: string): Promise<ThreadReply
     threadId: r.thread_id,
     number: r.number,
     name: r.display_name,
-    body: r.body,
+    body: r.deleted_at ? "" : r.body,
     quoteNumber: r.quote_number ?? undefined,
     likes: r.thread_reply_likes?.[0]?.count ?? 0,
+    deleted: Boolean(r.deleted_at),
     createdAt: r.created_at,
   }));
 }
@@ -731,6 +740,7 @@ export async function getCommentsForFeedItem(feedItemId: string): Promise<Commen
     .from("comments")
     .select("*, user:profiles(*)")
     .eq("feed_item_id", feedItemId)
+    .is("deleted_at", null)
     .order("created_at");
   return (data ?? [])
     .filter((c: Row) => c.user)

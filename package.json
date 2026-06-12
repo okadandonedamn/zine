@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "seed:tmdb": "tsx scripts/seed-tmdb.ts",
+    "seed:openbd": "tsx scripts/seed-openbd.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -27,6 +29,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "tsx": "^4.19.2",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

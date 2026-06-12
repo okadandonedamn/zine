@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { WorkCard } from "@/components/work/work-card";
 import { EmptyState } from "@/components/common/empty-state";
 import { getWorks } from "@/lib/data";
-import { CATEGORY_LABELS, type WorkCategory } from "@/lib/types";
+import { ACTIVE_CATEGORIES, CATEGORY_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "作品" };
@@ -15,9 +15,12 @@ export default async function WorksPage({
   searchParams: Promise<{ category?: string }>;
 }) {
   const { category } = await searchParams;
-  const all = await getWorks();
+  // UI上のカテゴリは映画+文学から(v1.1 判断10)。第二波はACTIVE_CATEGORIESに足すだけ
+  const all = (await getWorks()).filter((w) => ACTIVE_CATEGORIES.includes(w.category));
   const works = category ? all.filter((w) => w.category === category) : all;
-  const categories = Object.entries(CATEGORY_LABELS) as [WorkCategory, string][];
+  const categories = ACTIVE_CATEGORIES.map(
+    (key) => [key, CATEGORY_LABELS[key]] as const,
+  );
 
   return (
     <div className="px-4 py-6 sm:px-6">

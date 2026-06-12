@@ -38,20 +38,30 @@ type ReviewForm = z.infer<typeof reviewSchema>;
  * 「批評の型を自分で作る」: テンプレートから始めて、軸名を自由に書き換え、
  * 右側で五角形がリアルタイムに描かれる。
  */
-export function ReviewEditor({ works }: { works: Work[] }) {
+export function ReviewEditor({
+  works,
+  initialWorkId,
+}: {
+  works: Work[];
+  initialWorkId?: string;
+}) {
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [templateSaved, setTemplateSaved] = useState(false);
 
+  const initialWork = works.find((w) => w.id === initialWorkId);
   const form = useForm<ReviewForm>({
     resolver: zodResolver(reviewSchema),
     defaultValues: {
-      workId: "",
+      workId: initialWorkId ?? "",
       rating: 0,
       body: "",
       spoiler: false,
       visibility: "public",
-      axes: defaultTemplateFor("film").axes.map((axis) => ({ axis, score: 5 })),
+      axes: defaultTemplateFor(initialWork?.category ?? "film").axes.map((axis) => ({
+        axis,
+        score: 5,
+      })),
     },
   });
   const { fields } = useFieldArray({ control: form.control, name: "axes" });
@@ -141,9 +151,12 @@ export function ReviewEditor({ works }: { works: Work[] }) {
           )}
         </div>
 
-        {/* 星評価 */}
+        {/* 星評価 — 真実は本棚に住む(v1.1 判断4) */}
         <div>
           <label className="mb-1.5 block text-sm font-medium">総合評価</label>
+          <p className="mb-2 text-xs text-subtle">
+            星はあなたの本棚(鑑賞記録)に付きます。レビューと本棚で星が食い違うことはありません。
+          </p>
           <div className="flex items-center gap-4">
             <input
               type="range"

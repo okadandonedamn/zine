@@ -75,8 +75,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-line py-10 text-center text-xs tracking-widest text-subtle">
-        ZINE — 作品を語る場所 © 2026
+      <footer className="space-y-2 border-t border-line py-10 text-center text-xs tracking-widest text-subtle">
+        <p>ZINE — 作品を語る場所 © 2026</p>
+        <p className="tracking-normal">
+          This product uses the TMDB API but is not endorsed or certified by TMDB.
+        </p>
       </footer>
     </div>
   );

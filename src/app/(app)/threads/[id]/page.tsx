@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Flag, Heart } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { ReplyComposer } from "@/components/board/reply-composer";
 import { WorkChip } from "@/components/timeline/work-chip";
-import { getBoard, getRepliesForThread, getThread, getWork } from "@/lib/data";
+import { getRepliesForThread, getThread, getWork } from "@/lib/data";
 import { timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({
@@ -26,28 +25,23 @@ export default async function ThreadDetailPage({
   const { id } = await params;
   const thread = await getThread(id);
   if (!thread) notFound();
-  const [board, replies, work] = await Promise.all([
-    getBoard(thread.boardId),
+  const [replies, work] = await Promise.all([
     getRepliesForThread(id),
-    thread.workId ? getWork(thread.workId) : Promise.resolve(undefined),
+    getWork(thread.workId),
   ]);
 
   return (
     <div className="px-4 py-6 sm:px-6">
-      <p className="text-xs text-subtle">
-        <Link href="/boards" className="hover:underline">
-          掲示板
-        </Link>{" "}
-        /{" "}
-        {board && (
-          <Link href={`/boards/${board.id}`} className="hover:underline">
-            {board.name}
-          </Link>
-        )}
-      </p>
+      {work && (
+        <p className="text-xs text-subtle">
+          <Link href={`/works/${work.id}`} className="hover:underline">
+            『{work.title}』の語り場
+          </Link>{" "}
+          /
+        </p>
+      )}
       <h1 className="mt-2 font-display text-xl font-bold leading-relaxed">{thread.title}</h1>
       <div className="mt-2 flex items-center gap-2">
-        {thread.anonymous && <Badge>匿名スレ</Badge>}
         <span className="text-xs text-subtle">
           {thread.replyCount}レス ・ 最終 {timeAgo(thread.lastReplyAt)}
         </span>
@@ -59,39 +53,60 @@ export default async function ThreadDetailPage({
         </div>
       )}
 
-      {/* レス一覧。レス番号と引用が積み重なる */}
+      {/* レス一覧。レス番号と引用が積み重なる。削除済みも行は残る */}
       <div className="mt-6 space-y-3">
-        {replies.map((r) => (
-          <div key={r.id} id={`res-${r.number}`} className="rounded-md border border-line bg-surface p-4">
-            <div className="flex items-baseline gap-2 text-xs">
-              <span className="font-display font-semibold text-accent">{r.number}</span>
-              <span className="font-medium">{r.name}</span>
-              <span className="ml-auto text-subtle">{timeAgo(r.createdAt)}</span>
+        {replies.map((r) =>
+          r.deleted ? (
+            <div
+              key={r.id}
+              id={`res-${r.number}`}
+              className="rounded-md border border-dashed border-line p-4"
+            >
+              <div className="flex items-baseline gap-2 text-xs text-subtle">
+                <span className="font-display font-semibold">{r.number}</span>
+                <span>削除済み</span>
+                <span className="ml-auto">{timeAgo(r.createdAt)}</span>
+              </div>
+              <p className="mt-2 text-sm italic text-subtle">
+                このレスは削除されました。レス番号は保全されます。
+              </p>
             </div>
-            {r.quoteNumber && (
-              <a
-                href={`#res-${r.quoteNumber}`}
-                className="mt-2 block border-l-2 border-accent/50 pl-2 text-xs text-subtle hover:text-accent"
-              >
-                &gt;&gt;{r.quoteNumber} への返信
-              </a>
-            )}
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{r.body}</p>
-            <div className="mt-2.5 flex items-center gap-4 text-xs text-subtle">
-              <button className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent">
-                <Heart size={13} />
-                {r.likes}
-              </button>
-              <button
-                className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent"
-                title="通報(モデレーターが確認します)"
-              >
-                <Flag size={12} />
-                通報
-              </button>
+          ) : (
+            <div
+              key={r.id}
+              id={`res-${r.number}`}
+              className="rounded-md border border-line bg-surface p-4"
+            >
+              <div className="flex items-baseline gap-2 text-xs">
+                <span className="font-display font-semibold text-accent">{r.number}</span>
+                <span className="font-medium">{r.name}</span>
+                <span className="ml-auto text-subtle">{timeAgo(r.createdAt)}</span>
+              </div>
+              {r.quoteNumber && (
+                <a
+                  href={`#res-${r.quoteNumber}`}
+                  className="mt-2 block border-l-2 border-accent/50 pl-2 text-xs text-subtle hover:text-accent"
+                >
+                  &gt;&gt;{r.quoteNumber} への返信
+                </a>
+              )}
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{r.body}</p>
+              <div className="mt-2.5 flex items-center gap-4 text-xs text-subtle">
+                <button className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent">
+                  <Heart size={13} />
+                  {r.likes}
+                </button>
+                <button
+                  className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent"
+                  title="通報(モデレーターが確認します)"
+                >
+                  <Flag size={12} />
+                  通報
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
       </div>
 
       <div className="mt-6">

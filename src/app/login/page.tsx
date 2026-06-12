@@ -42,7 +42,8 @@ export default function LoginPage() {
         return;
       }
       if (data.session) {
-        router.push("/home");
+        // 新規登録 → オンボーディング(10作品に星をつけて本棚を生かす)
+        router.push("/welcome");
         router.refresh();
       } else {
         // メール確認が有効なプロジェクトの場合

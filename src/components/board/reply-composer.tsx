@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createReply } from "@/lib/actions";
-import { cn } from "@/lib/utils";
 
-/** スレッドへの返信フォーム。匿名/ハンドルネームを切り替えられる */
+/**
+ * スレッドへの返信フォーム。
+ * 投稿はハンドル(プロフィールの表示名)で行われる。匿名は提供しない(v1.1 判断7)。
+ */
 export function ReplyComposer({ threadId }: { threadId: string }) {
-  const [anonymous, setAnonymous] = useState(true);
   const [body, setBody] = useState("");
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
@@ -27,7 +28,7 @@ export function ReplyComposer({ threadId }: { threadId: string }) {
     if (body.trim().length === 0) return;
     setSending(true);
     setError(null);
-    const result = await createReply({ threadId, body, anonymous });
+    const result = await createReply({ threadId, body });
     if (result.ok) setSent(true);
     else {
       setError(result.error);
@@ -37,31 +38,14 @@ export function ReplyComposer({ threadId }: { threadId: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="rounded-md border border-line bg-surface p-4">
-      <div className="flex gap-2 text-xs">
-        {[
-          { label: "名無しの批評家(匿名)", value: true },
-          { label: "ハンドルネームで書く", value: false },
-        ].map((opt) => (
-          <button
-            key={opt.label}
-            type="button"
-            onClick={() => setAnonymous(opt.value)}
-            className={cn(
-              "cursor-pointer rounded-full border px-3 py-1 transition-colors",
-              anonymous === opt.value
-                ? "border-accent text-accent"
-                : "border-line text-muted hover:text-foreground",
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
+      <p className="text-xs text-subtle">
+        ハンドル(あなたの表示名)で書き込まれます。「&gt;&gt;2」のように書くと引用返信になります。
+      </p>
       <Textarea
         rows={3}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="「>>2」のように書くと引用返信になります。"
+        placeholder="作品への攻撃と人への攻撃を区別すること。"
         className="mt-3"
       />
       {error && <p className="mt-2 text-xs text-accent">{error}</p>}

@@ -89,6 +89,47 @@ const reviewInput = z.object({
     .length(5),
 });
 
+/**
+ * 本棚(records)に星を付ける。評価の唯一の真実(設計書v1.1 判断4)。
+ * 既に本棚にあれば星だけ更新し、なければ「done」として追加する。
+ */
+async function rateOnShelf(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  workId: string,
+  rating: number,
+): Promise<string | null> {
+  const { data: existing } = await supabase
+    .from("records")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("work_id", workId)
+    .maybeSingle();
+  if (existing) {
+    const { error } = await supabase
+      .from("records")
+      .update({ rating, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    return error?.message ?? null;
+  }
+  const { error } = await supabase
+    .from("records")
+    .insert({ user_id: userId, work_id: workId, status: "done", rating });
+  return error?.message ?? null;
+}
+
+/** オンボーディング(/welcome)などからの星付け */
+export async function rateWork(workId: string, rating: number): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  if (rating < 0.5 || rating > 5) return { ok: false, error: "星は0.5〜5です" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const err = await rateOnShelf(supabase, user.id, workId, rating);
+  if (err) return { ok: false, error: err };
+  revalidatePath(`/works/${workId}`);
+  return { ok: true };
+}
+
 export async function createReview(
   input: z.infer<typeof reviewInput>,
 ): Promise<ActionResult> {
@@ -98,12 +139,15 @@ export async function createReview(
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
 
+  // 星は本棚に付く(reviewsテーブルはratingを持たない)
+  const shelfError = await rateOnShelf(supabase, user.id, parsed.data.workId, parsed.data.rating);
+  if (shelfError) return { ok: false, error: shelfError };
+
   const { data: review, error } = await supabase
     .from("reviews")
     .insert({
       user_id: user.id,
       work_id: parsed.data.workId,
-      rating: parsed.data.rating,
       body: parsed.data.body,
       tags: parseTags(parsed.data.tags),
       spoiler: parsed.data.spoiler,
@@ -213,13 +257,11 @@ export async function createRecordSession(
   return { ok: true };
 }
 
-/* ---------- スレッド ---------- */
+/* ---------- 語り場(スレッドは作品に従属) ---------- */
 const threadInput = z.object({
-  boardId: z.string().min(1),
+  workId: z.string().min(1, "作品を選んでください"),
   title: z.string().min(5).max(60),
   body: z.string().min(10),
-  workId: z.string(),
-  anonymous: z.boolean(),
 });
 
 export async function createThread(
@@ -234,27 +276,18 @@ export async function createThread(
 
   const { data: thread, error } = await supabase
     .from("threads")
-    .insert({
-      board_id: d.boardId,
-      user_id: user.id,
-      work_id: d.workId || null,
-      title: d.title,
-      anonymous: d.anonymous,
-    })
+    .insert({ work_id: d.workId, user_id: user.id, title: d.title })
     .select("id")
     .single();
   if (error || !thread) return { ok: false, error: error?.message ?? "保存に失敗しました" };
 
-  const name = d.anonymous ? "名無しの批評家" : await displayNameOf(user.id);
-  const { error: replyError } = await supabase.from("thread_replies").insert({
-    thread_id: thread.id,
-    user_id: user.id,
-    number: 1,
-    display_name: name,
-    body: d.body,
+  // >>1 はDB関数で採番して投稿(§6-6)
+  const { error: replyError } = await supabase.rpc("post_thread_reply", {
+    p_thread_id: thread.id,
+    p_body: d.body,
   });
   if (replyError) return { ok: false, error: replyError.message };
-  revalidatePath("/boards");
+  revalidatePath(`/works/${d.workId}`);
   revalidatePath("/home");
   return { ok: true };
 }
@@ -262,41 +295,66 @@ export async function createThread(
 export async function createReply(input: {
   threadId: string;
   body: string;
-  anonymous: boolean;
 }): Promise<ActionResult> {
   if (!supabaseEnabled) return { ok: true, mock: true };
   if (!input.body.trim()) return { ok: false, error: "本文を入力してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
 
-  const { data: last } = await supabase
-    .from("thread_replies")
-    .select("number")
-    .eq("thread_id", input.threadId)
-    .order("number", { ascending: false })
-    .limit(1)
-    .single();
-  const number = (last?.number ?? 0) + 1;
-
   // 「>>3」のような引用を拾う
   const quoteMatch = input.body.match(/>>(\d+)/);
-  const name = input.anonymous ? "名無しの批評家" : await displayNameOf(user.id);
 
-  const { error } = await supabase.from("thread_replies").insert({
-    thread_id: input.threadId,
-    user_id: user.id,
-    number,
-    display_name: name,
-    body: input.body,
-    quote_number: quoteMatch ? Number(quoteMatch[1]) : null,
+  // 採番はDB関数 post_thread_reply のみが行う(count+1方式は禁止。§6-6)
+  const { error } = await supabase.rpc("post_thread_reply", {
+    p_thread_id: input.threadId,
+    p_body: input.body,
+    p_quote_number: quoteMatch ? Number(quoteMatch[1]) : null,
   });
   if (error) return { ok: false, error: error.message };
-
-  await supabase
-    .from("threads")
-    .update({ last_reply_at: new Date().toISOString() })
-    .eq("id", input.threadId);
   revalidatePath(`/threads/${input.threadId}`);
+  return { ok: true };
+}
+
+/* ---------- 論理削除(物理DELETEはアプリから発行しない) ---------- */
+
+/** 自分の投稿を削除(deleted_atを立て、タイムラインからは外す) */
+export async function deletePost(feedItemId: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data: item } = await supabase
+    .from("feed_items")
+    .select("source_id, item_type, user_id")
+    .eq("id", feedItemId)
+    .single();
+  if (!item || item.user_id !== user.id)
+    return { ok: false, error: "削除できるのは自分の投稿だけです" };
+  if (item.item_type !== "post" && item.item_type !== "quote")
+    return { ok: false, error: "この種類の活動はまだ削除に対応していません" };
+
+  const { error } = await supabase
+    .from("posts")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", item.source_id);
+  if (error) return { ok: false, error: error.message };
+  // feed_items はタイムラインの索引なので行ごと外す(本体はpostsに残る)
+  await supabase.from("feed_items").delete().eq("id", feedItemId);
+  revalidatePath("/home");
+  return { ok: true };
+}
+
+/** 自分のレスを削除(行とレス番号は残り「削除済み」表示になる) */
+export async function deleteReply(replyId: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const { error } = await supabase
+    .from("thread_replies")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", replyId)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
 
@@ -546,7 +604,7 @@ export async function markNotificationsRead(): Promise<ActionResult> {
   return { ok: true };
 }
 
-/* ---------- フォロー ---------- */
+/* ---------- フォロー(人 / 作品 / タグ の多態) ---------- */
 export async function toggleFollow(followeeId: string): Promise<ActionResult> {
   if (!supabaseEnabled) return { ok: true, mock: true };
   const { supabase, user } = await requireUser();
@@ -555,21 +613,17 @@ export async function toggleFollow(followeeId: string): Promise<ActionResult> {
 
   const { data: existing } = await supabase
     .from("follows")
-    .select("follower_id")
+    .select("id")
     .eq("follower_id", user.id)
-    .eq("followee_id", followeeId)
+    .eq("followee_user_id", followeeId)
     .maybeSingle();
 
   if (existing) {
-    await supabase
-      .from("follows")
-      .delete()
-      .eq("follower_id", user.id)
-      .eq("followee_id", followeeId);
+    await supabase.from("follows").delete().eq("id", existing.id);
   } else {
     const { error } = await supabase
       .from("follows")
-      .insert({ follower_id: user.id, followee_id: followeeId });
+      .insert({ follower_id: user.id, followee_user_id: followeeId });
     if (error) return { ok: false, error: error.message };
     await notify({ userId: followeeId, actorId: user.id, kind: "follow" });
   }
@@ -577,12 +631,27 @@ export async function toggleFollow(followeeId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-async function displayNameOf(userId: string): Promise<string> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .eq("id", userId)
-    .single();
-  return data?.display_name ?? "名無しの批評家";
+/** 作品をフォローする(新しいレビュー・スレッドを追うため) */
+export async function toggleWorkFollow(workId: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data: existing } = await supabase
+    .from("follows")
+    .select("id")
+    .eq("follower_id", user.id)
+    .eq("work_id", workId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("follows").delete().eq("id", existing.id);
+  } else {
+    const { error } = await supabase
+      .from("follows")
+      .insert({ follower_id: user.id, work_id: workId });
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath(`/works/${workId}`);
+  return { ok: true };
 }

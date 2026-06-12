@@ -10,33 +10,45 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createThread } from "@/lib/actions";
-import type { Board, Work } from "@/lib/types";
+import { CATEGORY_LABELS, type Work } from "@/lib/types";
 
 const threadSchema = z.object({
-  boardId: z.string().min(1, "板を選んでください"),
+  workId: z.string().min(1, "作品を選んでください"),
   title: z.string().min(5, "タイトルは5文字以上").max(60, "60文字まで"),
   body: z.string().min(10, "最初のレス(>>1)は10文字以上で"),
-  workId: z.string(),
-  anonymous: z.boolean(),
 });
 
 type ThreadForm = z.infer<typeof threadSchema>;
 
-export function ThreadEditor({ boards, works }: { boards: Board[]; works: Work[] }) {
+/**
+ * スレッド作成。語り場は必ず作品に従属する(独立した板は無い)。
+ * 投稿はハンドル(表示名)で行われる。
+ */
+export function ThreadEditor({
+  works,
+  initialWorkId,
+}: {
+  works: Work[];
+  initialWorkId?: string;
+}) {
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const form = useForm<ThreadForm>({
     resolver: zodResolver(threadSchema),
-    defaultValues: { boardId: "", title: "", body: "", workId: "", anonymous: true },
+    defaultValues: { workId: initialWorkId ?? "", title: "", body: "" },
   });
+  const work = works.find((w) => w.id === form.watch("workId"));
 
   if (submitted) {
     return (
       <Card className="space-y-3 p-8 text-center">
         <p className="font-display text-xl font-semibold">スレッドを立てました</p>
         <p className="text-sm text-muted">議論の場が開かれ、タイムラインに流れました。</p>
-        <Link href="/boards" className="inline-block text-sm text-accent hover:underline">
-          掲示板へ →
+        <Link
+          href={work ? `/works/${work.id}` : "/home"}
+          className="inline-block text-sm text-accent hover:underline"
+        >
+          {work ? `『${work.title}』の語り場へ →` : "タイムラインへ →"}
         </Link>
       </Card>
     );
@@ -52,21 +64,24 @@ export function ThreadEditor({ boards, works }: { boards: Board[]; works: Work[]
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-xl space-y-5">
       <div>
-        <label className="mb-1.5 block text-sm font-medium">板</label>
+        <label className="mb-1.5 block text-sm font-medium">作品(語り場の帰属先)</label>
         <select
-          {...form.register("boardId")}
+          {...form.register("workId")}
           className="h-9 w-full rounded-md border border-line bg-background px-3 text-sm"
         >
-          <option value="">板を選ぶ…</option>
-          {boards.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
+          <option value="">作品を選ぶ…</option>
+          {works.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.title}({CATEGORY_LABELS[w.category]})
             </option>
           ))}
         </select>
-        {form.formState.errors.boardId && (
-          <p className="mt-1 text-xs text-accent">{form.formState.errors.boardId.message}</p>
+        {form.formState.errors.workId && (
+          <p className="mt-1 text-xs text-accent">{form.formState.errors.workId.message}</p>
         )}
+        <p className="mt-1 text-xs text-subtle">
+          スレッドは作品ページの「語り場」に帰属します。
+        </p>
       </div>
       <div>
         <label className="mb-1.5 block text-sm font-medium">スレッドタイトル</label>
@@ -86,24 +101,6 @@ export function ThreadEditor({ boards, works }: { boards: Board[]; works: Work[]
           <p className="mt-1 text-xs text-accent">{form.formState.errors.body.message}</p>
         )}
       </div>
-      <div>
-        <label className="mb-1.5 block text-xs text-muted">関連作品(任意)</label>
-        <select
-          {...form.register("workId")}
-          className="h-9 w-full rounded-md border border-line bg-background px-3 text-sm"
-        >
-          <option value="">なし</option>
-          {works.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.title}
-            </option>
-          ))}
-        </select>
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" {...form.register("anonymous")} className="accent-(--accent)" />
-        匿名スレにする(全員「名無しの批評家」として書き込む)
-      </label>
       {serverError && <p className="text-xs text-accent">{serverError}</p>}
       <Button type="submit" disabled={form.formState.isSubmitting}>
         {form.formState.isSubmitting ? "送信中…" : "スレッドを立てる"}
