@@ -5,7 +5,7 @@
 映画・音楽・文学・美術・ファッション・展示・舞台・ゲーム。
 短文投稿、長文記事、レビュー、掲示板スレッド、鑑賞記録 — すべてがひとつのタイムラインに流れ込みます。
 
-設計の全体像は **[DESIGN.md](./DESIGN.md)** を参照してください。
+設計の全体像は **[docs/DESIGN.md](./docs/DESIGN.md)**(設計書 v1.1)を参照してください。実装との既知の差分は [docs/IMPLEMENTATION-NOTES.md](./docs/IMPLEMENTATION-NOTES.md) にあります。
 
 ## 動かし方
 
