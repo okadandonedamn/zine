@@ -2,20 +2,25 @@ import { format, subDays } from "date-fns";
 import { Card } from "@/components/ui/card";
 import { DailyMinutesChart } from "@/components/record/stats-charts";
 import { GoalCard } from "@/components/record/goal-card";
-import { getGoals, getRecords, getStreak, getWorks } from "@/lib/data";
+import { RecapCard } from "@/components/record/recap-card";
+import { getCurrentUser, getGoals, getRecords, getStreak, getWorks } from "@/lib/data";
+import { buildMonthlyRecap, latestRecordMonth } from "@/lib/recap";
 import { formatMinutes } from "@/lib/utils";
 import { CATEGORY_COLORS, CATEGORY_LABELS, type WorkCategory } from "@/lib/types";
 
 export const metadata = { title: "鑑賞統計" };
 
 export default async function RecordStatsPage() {
-  const [records, works, goals, streak] = await Promise.all([
+  const [records, works, goals, streak, me] = await Promise.all([
     getRecords(),
     getWorks(),
     getGoals(),
     getStreak(),
+    getCurrentUser(),
   ]);
   const workMap = new Map(works.map((w) => [w.id, w]));
+  const { year, month } = latestRecordMonth(records);
+  const recap = buildMonthlyRecap(records, works, year, month);
 
   // 基準日 = 最新の記録日。記録がなければ今日
   const latest =
@@ -99,6 +104,19 @@ export default async function RecordStatsPage() {
           ))}
         </div>
       </Card>
+
+      {/* 月間総括カード(Phase 4) */}
+      {recap.sessionCount > 0 && (
+        <section className="mt-8">
+          <h2 className="font-display text-lg font-semibold">月間総括</h2>
+          <p className="mt-1 text-sm text-muted">
+            {recap.year}年{recap.month}月のあなたの一枚。画像で保存して共有できます。
+          </p>
+          <div className="mt-4">
+            <RecapCard recap={recap} username={me?.username ?? "you"} />
+          </div>
+        </section>
+      )}
 
       {/* 目標 */}
       <h2 className="mt-8 font-display text-lg font-semibold">目標の進捗</h2>

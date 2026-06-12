@@ -618,7 +618,7 @@ export async function getRecords(): Promise<RecordEntry[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("record_sessions")
-    .select("*, record:records(status, work_id)")
+    .select("*, record:records(status, work_id, rating)")
     .eq("user_id", me.id)
     .order("consumed_at", { ascending: false })
     .limit(200);
