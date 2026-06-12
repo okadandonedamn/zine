@@ -65,9 +65,17 @@ v1.1 §3-2の注記「既に実装済みの場合は実装側を正とする」�
   通報対象は当面 thread / thread_reply(ReportTargetType)。posts への拡張は
   feed_items 経由のリンク解決を足せばよい
 
+- ✅ 安全三点セットのうち2つ(2026-06-12): NGワードフィルタ(lib/safety.ts の
+  純粋関数。NFKC正規化+空白除去で表記ゆれ吸収。モックモードでも効く)と
+  連投制限(actions.ts の checkRateLimit が直近行の created_at を見る。
+  秒数は safety.ts の RATE_LIMIT_SECONDS)。短文/レビュー/記事/スレ/レス/
+  コメントの6アクションに適用。残るは CAPTCHA(Turnstile)のみで、これは
+  Supabase プロジェクト作成時にダッシュボードで有効化する
+
 ## 未着手(v1.1ロードマップ)
 
-- 安全三点セット(CAPTCHA/連投制限/NGワード)— Phase 6 一般公開前
+- 安全三点セットの残り1つ: CAPTCHA(Turnstile)— Supabase Auth設定+
+  ログイン画面への組み込み。一般公開前に必須
 - 「一冊に編む」zines / 年間総括 / リポストのフィード表示 — Phase 7
 - Playwrightスモークテスト
 - 語り場レスのいいねボタン(thread_reply_likes)の配線(現状は表示のみ)

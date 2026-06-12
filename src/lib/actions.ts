@@ -9,6 +9,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseEnabled } from "./supabase/env";
 import { createClient } from "./supabase/server";
+import {
+  findNgWord,
+  NG_WORD_ERROR,
+  RATE_LIMIT_SECONDS,
+  rateLimitError,
+  type RateLimitedTable,
+} from "./safety";
 
 export type ActionResult = { ok: true; mock?: boolean } | { ok: false; error: string };
 
@@ -21,6 +28,29 @@ async function requireUser() {
 }
 
 const NEEDS_LOGIN = "ログインが必要です。/login からサインインしてください。";
+
+/**
+ * 連投制限(安全三点セット)。直近の自分の行から十分な秒数が経っていなければ
+ * エラーメッセージを返す。アプリ側の最低限の盾(safety.ts 参照)。
+ */
+async function checkRateLimit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: RateLimitedTable,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from(table)
+    .select("created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const limit = RATE_LIMIT_SECONDS[table];
+  const elapsed = (Date.now() - +new Date(data.created_at)) / 1000;
+  if (elapsed < limit) return rateLimitError(Math.ceil(limit - elapsed));
+  return null;
+}
 
 /** タグ入力文字列("a, b, c")を配列に正規化 */
 function parseTags(raw: string): string[] {
@@ -59,11 +89,14 @@ const postInput = z.object({
 });
 
 export async function createPost(input: z.infer<typeof postInput>): Promise<ActionResult> {
+  if (findNgWord(input.body)) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   const parsed = postInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const rateError = await checkRateLimit(supabase, "posts", user.id);
+  if (rateError) return { ok: false, error: rateError };
 
   const { error } = await supabase.from("posts").insert({
     user_id: user.id,
@@ -133,11 +166,14 @@ export async function rateWork(workId: string, rating: number): Promise<ActionRe
 export async function createReview(
   input: z.infer<typeof reviewInput>,
 ): Promise<ActionResult> {
+  if (findNgWord(input.body)) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   const parsed = reviewInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const rateError = await checkRateLimit(supabase, "reviews", user.id);
+  if (rateError) return { ok: false, error: rateError };
 
   // 星は本棚に付く(reviewsテーブルはratingを持たない)
   const shelfError = await rateOnShelf(supabase, user.id, parsed.data.workId, parsed.data.rating);
@@ -267,11 +303,14 @@ const threadInput = z.object({
 export async function createThread(
   input: z.infer<typeof threadInput>,
 ): Promise<ActionResult> {
+  if (findNgWord(input.title, input.body)) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   const parsed = threadInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const rateError = await checkRateLimit(supabase, "threads", user.id);
+  if (rateError) return { ok: false, error: rateError };
   const d = parsed.data;
 
   const { data: thread, error } = await supabase
@@ -296,10 +335,13 @@ export async function createReply(input: {
   threadId: string;
   body: string;
 }): Promise<ActionResult> {
+  if (findNgWord(input.body)) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   if (!input.body.trim()) return { ok: false, error: "本文を入力してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const rateError = await checkRateLimit(supabase, "thread_replies", user.id);
+  if (rateError) return { ok: false, error: rateError };
 
   // 「>>3」のような引用を拾う
   const quoteMatch = input.body.match(/>>(\d+)/);
@@ -443,11 +485,14 @@ const articleInput = z.object({
 export async function createArticle(
   input: z.infer<typeof articleInput>,
 ): Promise<ActionResult> {
+  if (findNgWord(input.title, input.body)) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   const parsed = articleInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const rateError = await checkRateLimit(supabase, "articles", user.id);
+  if (rateError) return { ok: false, error: rateError };
   const d = parsed.data;
 
   const { data: article, error } = await supabase
@@ -728,12 +773,15 @@ export async function createComment(input: {
   feedItemId: string;
   body: string;
 }): Promise<ActionResult> {
+  if (findNgWord(input.body)) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   const body = input.body.trim();
   if (!body || body.length > 500)
     return { ok: false, error: "コメントは1〜500文字で入力してください" };
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const rateError = await checkRateLimit(supabase, "comments", user.id);
+  if (rateError) return { ok: false, error: rateError };
 
   const { error } = await supabase.from("comments").insert({
     user_id: user.id,
