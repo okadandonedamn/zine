@@ -117,7 +117,12 @@ export function Sidebar({
         </Link>
       </div>
       <div className="flex items-center justify-between px-2">
-        <span className="text-[10px] tracking-widest text-subtle">© ZINE 2026</span>
+        <Link
+          href="/about"
+          className="text-[10px] tracking-widest text-subtle hover:text-muted"
+        >
+          © ZINE 2026 ・ 規約
+        </Link>
         <ThemeToggle />
       </div>
     </aside>
