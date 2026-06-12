@@ -197,6 +197,28 @@ export interface AxisTemplate {
   axes: [string, string, string, string, string];
 }
 
+/**
+ * コレクション(作品リスト)。「雨の日の映画十二選」のようなキュレーション。
+ * collections テーブルに対応。Phase 7 の zines(一冊に編む)の前段。
+ */
+export interface Collection {
+  id: string;
+  title: string;
+  description: string;
+  isPrivate: boolean;
+  itemCount: number;
+  createdAt: string;
+  owner?: User;
+}
+
+/** コレクション内の1作品(collection_items テーブルに対応) */
+export interface CollectionItem {
+  work: Work;
+  /** 一言キュレーション */
+  note?: string;
+  position: number;
+}
+
 /** ログイン中ユーザーがこのフィード項目に対して行ったリアクション */
 export interface ViewerState {
   liked: boolean;

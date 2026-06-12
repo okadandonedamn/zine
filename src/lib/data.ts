@@ -13,6 +13,8 @@ import * as mock from "./mock-data";
 import {
   CATEGORY_COLORS,
   type Article,
+  type Collection,
+  type CollectionItem,
   type Comment,
   type FeedItem,
   type FeedItemType,
@@ -677,6 +679,100 @@ export async function getStreak(): Promise<number> {
     .eq("user_id", me.id)
     .single();
   return data?.current_days ?? 0;
+}
+
+/* =============================================================
+ * コレクション(作品リスト)
+ * ============================================================= */
+
+function mapCollection(row: Row): Collection {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? "",
+    isPrivate: row.is_private,
+    itemCount: row.collection_items?.[0]?.count ?? 0,
+    createdAt: row.created_at,
+    owner: row.owner ? mapProfile(row.owner) : undefined,
+  };
+}
+
+const COLLECTION_SELECT = "*, collection_items(count), owner:profiles(*)";
+
+/** 自分のコレクション(非公開も含む) */
+export async function getMyCollections(): Promise<Collection[]> {
+  if (!supabaseEnabled) {
+    return mock.collections.filter((c) => c.owner?.id === mock.currentUser.id);
+  }
+  const me = await getCurrentUser();
+  if (!me) return [];
+  return getCollectionsByUser(me.id);
+}
+
+/** ユーザーのコレクション。他人の非公開はRLSが隠す */
+export async function getCollectionsByUser(userId: string): Promise<Collection[]> {
+  if (!supabaseEnabled) {
+    const visible =
+      userId === mock.currentUser.id
+        ? mock.collections
+        : mock.collections.filter((c) => !c.isPrivate);
+    return visible.filter((c) => c.owner?.id === userId);
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collections")
+    .select(COLLECTION_SELECT)
+    .eq("owner_id", userId)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map(mapCollection);
+}
+
+export async function getCollection(
+  id: string,
+): Promise<(Collection & { items: CollectionItem[] }) | undefined> {
+  if (!supabaseEnabled) {
+    const c = mock.collections.find((x) => x.id === id);
+    if (!c) return undefined;
+    if (c.isPrivate && c.owner?.id !== mock.currentUser.id) return undefined;
+    return { ...c, items: mock.collectionItems[id] ?? [] };
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collections")
+    .select(`*, owner:profiles(*), collection_items(position, note, work:works(${WORK_SELECT}))`)
+    .eq("id", id)
+    .single();
+  if (!data) return undefined;
+  const items: CollectionItem[] = ((data.collection_items as Row[]) ?? [])
+    .filter((i) => i.work)
+    .sort((a, b) => a.position - b.position)
+    .map((i) => ({ work: mapWork(i.work), note: i.note ?? undefined, position: i.position }));
+  return { ...mapCollection({ ...data, collection_items: undefined }), itemCount: items.length, items };
+}
+
+/** この作品を含む(閲覧可能な)コレクション */
+export async function getCollectionsForWork(workId: string): Promise<Collection[]> {
+  if (!supabaseEnabled) {
+    return mock.collections.filter(
+      (c) =>
+        (mock.collectionItems[c.id] ?? []).some((i) => i.work.id === workId) &&
+        (!c.isPrivate || c.owner?.id === mock.currentUser.id),
+    );
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collection_items")
+    .select(`collection:collections(${COLLECTION_SELECT})`)
+    .eq("work_id", workId)
+    .limit(20);
+  const seen = new Set<string>();
+  const result: Collection[] = [];
+  for (const r of (data as Row[] | null) ?? []) {
+    if (!r.collection || seen.has(r.collection.id)) continue;
+    seen.add(r.collection.id);
+    result.push(mapCollection(r.collection));
+  }
+  return result;
 }
 
 /* =============================================================

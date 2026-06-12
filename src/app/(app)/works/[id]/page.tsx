@@ -9,8 +9,13 @@ import { RadarRatingChart } from "@/components/review/radar-rating-chart";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { EmptyState } from "@/components/common/empty-state";
 import { FollowWorkButton } from "@/components/work/follow-work-button";
+import { AddToCollection } from "@/components/collection/add-to-collection";
+import { CollectionCard } from "@/components/collection/collection-card";
 import {
   getArticlesForWork,
+  getCollectionsForWork,
+  getCurrentUser,
+  getMyCollections,
   getRecordsForWork,
   getReviewsForWork,
   getThreadsForWork,
@@ -58,14 +63,18 @@ export default async function WorkDetailPage({
   const work = await getWork(id);
   if (!work) notFound();
 
-  const [reviews, records, threads, articles, users, followingWork] = await Promise.all([
-    getReviewsForWork(id),
-    getRecordsForWork(id),
-    getThreadsForWork(id),
-    getArticlesForWork(id),
-    getUsers(),
-    isFollowingWork(id),
-  ]);
+  const [reviews, records, threads, articles, users, followingWork, collections, myCollections, me] =
+    await Promise.all([
+      getReviewsForWork(id),
+      getRecordsForWork(id),
+      getThreadsForWork(id),
+      getArticlesForWork(id),
+      getUsers(),
+      isFollowingWork(id),
+      getCollectionsForWork(id),
+      getMyCollections(),
+      getCurrentUser(),
+    ]);
   const avg = averageAxes(reviews.map((r) => r.axes));
 
   const statusCounts = records.reduce<Record<string, number>>((acc, r) => {
@@ -187,6 +196,25 @@ export default async function WorkDetailPage({
             </div>
           )}
         </section>
+
+        {/* コレクション(Phase 5) */}
+        {(collections.length > 0 || me) && (
+          <section>
+            <h2 className="font-display text-lg font-semibold">コレクション</h2>
+            {collections.length > 0 && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {collections.map((c) => (
+                  <CollectionCard key={c.id} collection={c} showOwner />
+                ))}
+              </div>
+            )}
+            {me && (
+              <div className="mt-4">
+                <AddToCollection workId={work.id} collections={myCollections} />
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 関連スレッド・記事 */}
         {threads.length > 0 && (

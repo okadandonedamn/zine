@@ -5,6 +5,8 @@
  */
 import type {
   Article,
+  Collection,
+  CollectionItem,
   Comment,
   FeedItem,
   Goal,
@@ -666,6 +668,49 @@ export const notifications: Notification[] = [
     createdAt: "2026-06-09T19:45:00+09:00",
   },
 ];
+
+export const collections: Collection[] = [
+  {
+    id: "col1",
+    title: "雨の日に観る映画",
+    description: "外に出られない午後のための、湿度の高い映画たち。順番に意味があります。",
+    isPrivate: false,
+    itemCount: 3,
+    createdAt: "2026-06-08T20:00:00+09:00",
+    owner: users[0],
+  },
+  {
+    id: "col2",
+    title: "深夜0時以降にだけ聴く",
+    description: "日付が変わってから効きはじめる音楽。",
+    isPrivate: false,
+    itemCount: 2,
+    createdAt: "2026-06-05T23:30:00+09:00",
+    owner: users[3],
+  },
+  {
+    id: "col3",
+    title: "積読の塔(自分用)",
+    description: "いつか登る。",
+    isPrivate: true,
+    itemCount: 1,
+    createdAt: "2026-06-01T09:00:00+09:00",
+    owner: users[0],
+  },
+];
+
+export const collectionItems: Record<string, CollectionItem[]> = {
+  col1: [
+    { work: works[0], note: "雨と廊下とチャイナドレス。湿度100%の恋。", position: 0 },
+    { work: works[2], note: "雨音の代わりに琵琶の音を。", position: 1 },
+    { work: works[4], note: "美術館までの雨の道のりも展示の一部。", position: 2 },
+  ],
+  col2: [
+    { work: works[3], note: "条件: 部屋を暗くして、通しで。", position: 0 },
+    { work: works[6], note: "Fitter Happier は深夜にしか本当の声で鳴らない。", position: 1 },
+  ],
+  col3: [{ work: works[5], position: 0 }],
+};
 
 export const trendingTags = [
   { tag: "花様年華", count: 482 },

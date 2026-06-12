@@ -494,6 +494,102 @@ export async function createWork(
   return { ok: true, id: data.id };
 }
 
+/* ---------- コレクション(作品リスト) ---------- */
+const collectionInput = z.object({
+  title: z.string().min(1).max(60),
+  description: z.string().max(300),
+  isPrivate: z.boolean(),
+});
+
+export async function createCollection(
+  input: z.infer<typeof collectionInput>,
+): Promise<{ ok: true; mock?: boolean; id?: string } | { ok: false; error: string }> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const parsed = collectionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data, error } = await supabase
+    .from("collections")
+    .insert({
+      owner_id: user.id,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      is_private: parsed.data.isPrivate,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "保存に失敗しました" };
+  revalidatePath("/collections");
+  return { ok: true, id: data.id };
+}
+
+/** 作品をコレクションの末尾に加える */
+export async function addToCollection(input: {
+  collectionId: string;
+  workId: string;
+  note?: string;
+}): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  // 並び順は同一ユーザーの操作しか起きないため、件数から採番してよい
+  // (レス番号のような競合条件は無い)
+  const { count } = await supabase
+    .from("collection_items")
+    .select("*", { count: "exact", head: true })
+    .eq("collection_id", input.collectionId);
+
+  const { error } = await supabase.from("collection_items").insert({
+    collection_id: input.collectionId,
+    work_id: input.workId,
+    position: count ?? 0,
+    note: input.note?.trim() || null,
+  });
+  if (error) {
+    if (error.code === "23505")
+      return { ok: false, error: "この作品はすでに入っています" };
+    return { ok: false, error: error.message };
+  }
+  revalidatePath(`/collections/${input.collectionId}`);
+  revalidatePath(`/works/${input.workId}`);
+  return { ok: true };
+}
+
+export async function removeFromCollection(input: {
+  collectionId: string;
+  workId: string;
+}): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const { error } = await supabase
+    .from("collection_items")
+    .delete()
+    .eq("collection_id", input.collectionId)
+    .eq("work_id", input.workId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/collections/${input.collectionId}`);
+  return { ok: true };
+}
+
+/** コレクションを削除(作品リストの索引なので物理削除でよい。投稿の論理削除とは別物) */
+export async function deleteCollection(collectionId: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const { error } = await supabase
+    .from("collections")
+    .delete()
+    .eq("id", collectionId)
+    .eq("owner_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/collections");
+  return { ok: true };
+}
+
 /* ---------- リアクション(いいね / ブックマーク / リポスト) ---------- */
 
 async function toggleReaction(
