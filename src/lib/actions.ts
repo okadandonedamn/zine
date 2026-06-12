@@ -358,6 +358,79 @@ export async function deleteReply(replyId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/* ---------- 通報(モデレーション) ---------- */
+const reportInput = z.object({
+  targetType: z.enum(["thread", "thread_reply"]),
+  targetId: z.string().min(1),
+  reason: z.string().min(1).max(500),
+});
+
+/** コンテンツを通報する。処理は moderator が /moderation で行う */
+export async function submitReport(
+  input: z.infer<typeof reportInput>,
+): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const parsed = reportInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "通報理由を入力してください" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const { error } = await supabase.from("reports").insert({
+    reporter_id: user.id,
+    target_type: parsed.data.targetType,
+    target_id: parsed.data.targetId,
+    reason: parsed.data.reason,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+const handleReportInput = z.object({
+  reportId: z.string().min(1),
+  action: z.enum(["remove", "dismiss"]),
+});
+
+/**
+ * 通報を処理する(moderator専用。reports/対象テーブルのRLSでも強制される)。
+ * remove: 対象を論理削除して status='actioned' / dismiss: status='dismissed'。
+ * 論理削除なのでタイムライン・スレッド表示側が自動的に「削除済み」扱いにする。
+ */
+export async function handleReport(
+  input: z.infer<typeof handleReportInput>,
+): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const parsed = handleReportInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data: report } = await supabase
+    .from("reports")
+    .select("id, target_type, target_id")
+    .eq("id", parsed.data.reportId)
+    .single();
+  if (!report) return { ok: false, error: "通報が見つかりません" };
+
+  if (parsed.data.action === "remove") {
+    const table = report.target_type === "thread" ? "threads" : "thread_replies";
+    const { error: removeError } = await supabase
+      .from(table)
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", report.target_id);
+    if (removeError) return { ok: false, error: removeError.message };
+  }
+
+  const { error } = await supabase
+    .from("reports")
+    .update({
+      status: parsed.data.action === "remove" ? "actioned" : "dismissed",
+      handled_by: user.id,
+    })
+    .eq("id", report.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/moderation");
+  return { ok: true };
+}
+
 /* ---------- 記事 ---------- */
 const articleInput = z.object({
   title: z.string().min(1).max(80),

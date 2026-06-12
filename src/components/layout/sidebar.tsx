@@ -12,6 +12,7 @@ import {
   PenLine,
   Search,
   Settings,
+  ShieldAlert,
   Target,
   User,
 } from "lucide-react";
@@ -32,9 +33,11 @@ const NAV = [
 export function Sidebar({
   meUsername,
   unreadCount = 0,
+  isModerator = false,
 }: {
   meUsername: string | null;
   unreadCount?: number;
+  isModerator?: boolean;
 }) {
   const pathname = usePathname();
   return (
@@ -110,6 +113,20 @@ export function Sidebar({
             <Settings size={18} strokeWidth={1.8} />
             設定
           </Link>
+          {isModerator && (
+            <Link
+              href="/moderation"
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                pathname === "/moderation"
+                  ? "bg-surface-2 font-semibold text-foreground"
+                  : "text-muted hover:bg-surface-2 hover:text-foreground",
+              )}
+            >
+              <ShieldAlert size={18} strokeWidth={1.8} />
+              モデレーション
+            </Link>
+          )}
         </nav>
         <Link href="/post/new" className="block px-1">
           <Button className="w-full" size="lg">

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Flag, Heart } from "lucide-react";
+import { Heart } from "lucide-react";
 import { ReplyComposer } from "@/components/board/reply-composer";
+import { ReportButton } from "@/components/common/report-button";
 import { WorkChip } from "@/components/timeline/work-chip";
 import { getRepliesForThread, getThread, getWork } from "@/lib/data";
 import { timeAgo } from "@/lib/utils";
@@ -41,9 +42,12 @@ export default async function ThreadDetailPage({
         </p>
       )}
       <h1 className="mt-2 font-display text-xl font-bold leading-relaxed">{thread.title}</h1>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="text-xs text-subtle">
           {thread.replyCount}レス ・ 最終 {timeAgo(thread.lastReplyAt)}
+        </span>
+        <span className="ml-auto">
+          <ReportButton targetType="thread" targetId={thread.id} />
         </span>
       </div>
 
@@ -91,18 +95,12 @@ export default async function ThreadDetailPage({
                 </a>
               )}
               <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{r.body}</p>
-              <div className="mt-2.5 flex items-center gap-4 text-xs text-subtle">
+              <div className="mt-2.5 flex flex-wrap items-center gap-4 text-xs text-subtle">
                 <button className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent">
                   <Heart size={13} />
                   {r.likes}
                 </button>
-                <button
-                  className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent"
-                  title="通報(モデレーターが確認します)"
-                >
-                  <Flag size={12} />
-                  通報
-                </button>
+                <ReportButton targetType="thread_reply" targetId={r.id} />
               </div>
             </div>
           ),

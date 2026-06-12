@@ -56,8 +56,18 @@ v1.1 §3-2の注記「既に実装済みの場合は実装側を正とする」�
   記録の feed_items に work_id が無かったため migration-003 で供給トリガーを
   修正+埋め戻し(feed供給トリガーは規約上の許容例外)
 
+- ✅ 通報フロー(Phase 6 前進・2026-06-12): ReportButton(語り場のスレッド/レス、
+  理由必須)→ submitReport が reports に積む。/moderation(moderator/admin のみ、
+  サイドバーに条件表示)で「対象を削除して対応」(論理削除+status=actioned)
+  または「却下」(dismissed)。handled_by を記録。role は profiles.role を
+  mapProfile で User.role に載せた(変更はDBダッシュボードのみ)。
+  モックの currentUser は moderator にして画面確認可能。
+  通報対象は当面 thread / thread_reply(ReportTargetType)。posts への拡張は
+  feed_items 経由のリンク解決を足せばよい
+
 ## 未着手(v1.1ロードマップ)
 
 - 安全三点セット(CAPTCHA/連投制限/NGワード)— Phase 6 一般公開前
 - 「一冊に編む」zines / 年間総括 / リポストのフィード表示 — Phase 7
 - Playwrightスモークテスト
+- 語り場レスのいいねボタン(thread_reply_likes)の配線(現状は表示のみ)

@@ -21,6 +21,8 @@ import {
   type Goal,
   type Notification,
   type RecordEntry,
+  type Report,
+  type ReportTargetType,
   type Review,
   type Thread,
   type ThreadReply,
@@ -64,6 +66,7 @@ function mapProfile(row: Row): User {
     avatarUrl: row.avatar_url ?? undefined,
     followers: row.followers ?? 0,
     following: row.following ?? 0,
+    role: row.role ?? "user",
   };
 }
 
@@ -618,6 +621,72 @@ export async function getFollowedTags(userId: string): Promise<string[]> {
     .not("tag_id", "is", null)
     .limit(100);
   return ((data as Row[] | null) ?? []).map((r) => r.tag?.name).filter(Boolean);
+}
+
+/* =============================================================
+ * 通報(モデレーション)
+ * ============================================================= */
+
+/**
+ * 通報一覧(/moderation 用)。RLSにより moderator 以外は自分の通報しか返らない。
+ * 対象本文の抜粋とリンクをここで解決し、画面は表示に専念する。
+ */
+export async function getReports(): Promise<Report[]> {
+  if (!supabaseEnabled) {
+    return [...mock.reports].sort(
+      (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
+    );
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("reports")
+    .select("*, reporter:profiles!reports_reporter_id_fkey(*)")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  const rows = (data as Row[] | null) ?? [];
+
+  const idsOf = (t: ReportTargetType) =>
+    rows.filter((r) => r.target_type === t).map((r) => r.target_id);
+  const fetchMap = async (table: string, select: string, ids: string[]) => {
+    if (ids.length === 0) return new Map<string, Row>();
+    const { data: d } = await supabase.from(table).select(select).in("id", ids);
+    return new Map(((d as Row[] | null) ?? []).map((x) => [x.id as string, x]));
+  };
+  const [replyMap, threadMap] = await Promise.all([
+    fetchMap("thread_replies", "id, body, thread_id, number", idsOf("thread_reply")),
+    fetchMap("threads", "id, title", idsOf("thread")),
+  ]);
+
+  return rows
+    .filter((r) => r.reporter)
+    .map((r) => {
+      let excerpt = "(対象を取得できませんでした)";
+      let targetHref = "/home";
+      if (r.target_type === "thread_reply") {
+        const reply = replyMap.get(r.target_id);
+        if (reply) {
+          excerpt = reply.body;
+          targetHref = `/threads/${reply.thread_id}#res-${reply.number}`;
+        }
+      } else if (r.target_type === "thread") {
+        const thread = threadMap.get(r.target_id);
+        if (thread) {
+          excerpt = thread.title;
+          targetHref = `/threads/${r.target_id}`;
+        }
+      }
+      return {
+        id: r.id,
+        reporter: mapProfile(r.reporter),
+        targetType: r.target_type,
+        targetId: r.target_id,
+        reason: r.reason,
+        status: r.status,
+        createdAt: r.created_at,
+        excerpt: excerpt.slice(0, 120),
+        targetHref,
+      };
+    });
 }
 
 /* =============================================================

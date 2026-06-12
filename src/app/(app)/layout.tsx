@@ -20,7 +20,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       >
         本文へスキップ
       </a>
-      <Sidebar meUsername={me?.username ?? null} unreadCount={unreadCount} />
+      <Sidebar
+        meUsername={me?.username ?? null}
+        unreadCount={unreadCount}
+        isModerator={me?.role === "moderator" || me?.role === "admin"}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header unreadCount={unreadCount} />
         <main id="main" className="flex-1 pb-20 md:pb-8">

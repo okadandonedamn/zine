@@ -49,6 +49,8 @@ export const CATEGORY_COLORS: Record<WorkCategory, string> = {
 
 export type Visibility = "public" | "private";
 
+export type UserRole = "user" | "moderator" | "admin";
+
 export interface User {
   id: string;
   username: string;
@@ -60,6 +62,8 @@ export interface User {
   avatarUrl?: string;
   followers: number;
   following: number;
+  /** モデレーション権限。変更はDBダッシュボードのみ(アプリにUIを作らない) */
+  role?: UserRole;
 }
 
 export interface Work {
@@ -250,6 +254,26 @@ export interface Notification {
   feedItemId?: string;
   read: boolean;
   createdAt: string;
+}
+
+/** 通報できる対象。当面は語り場のみ(reports.target_type に対応) */
+export type ReportTargetType = "thread" | "thread_reply";
+
+export type ReportStatus = "open" | "reviewed" | "actioned" | "dismissed";
+
+/** 通報(reports テーブルに対応)。処理は /moderation で行う */
+export interface Report {
+  id: string;
+  reporter: User;
+  targetType: ReportTargetType;
+  targetId: string;
+  reason: string;
+  status: ReportStatus;
+  createdAt: string;
+  /** 対象本文の抜粋(モデレーション画面での内容確認用) */
+  excerpt: string;
+  /** 対象を確認しに行くリンク */
+  targetHref: string;
 }
 
 /**

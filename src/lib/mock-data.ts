@@ -12,6 +12,7 @@ import type {
   Goal,
   Notification,
   RecordEntry,
+  Report,
   Review,
   Thread,
   ThreadReply,
@@ -28,6 +29,8 @@ export const users: User[] = [
     avatarHue: 12,
     followers: 824,
     following: 311,
+    // モックモードで /moderation を確認できるように moderator にしている
+    role: "moderator",
   },
   {
     id: "u2",
@@ -714,6 +717,43 @@ export const collectionItems: Record<string, CollectionItem[]> = {
 
 /** ログイン中ユーザー(モック)がフォローしているタグ */
 export const followedTags = ["夜に聴く一枚", "見ることの訓練"];
+
+/** 通報(モック)。/moderation の処理フロー確認用 */
+export const reports: Report[] = [
+  {
+    id: "rep1",
+    reporter: users[2],
+    targetType: "thread_reply",
+    targetId: "tr5",
+    reason: "他の参加者への揶揄が含まれており、議論の空気を悪くしています。",
+    status: "open",
+    createdAt: "2026-06-11T10:00:00+09:00",
+    excerpt: threadReplies[4].body,
+    targetHref: "/threads/t1#res-5",
+  },
+  {
+    id: "rep2",
+    reporter: users[3],
+    targetType: "thread",
+    targetId: "t2",
+    reason: "外部サービスへの誘導が繰り返されています。スパムだと思います。",
+    status: "open",
+    createdAt: "2026-06-10T22:00:00+09:00",
+    excerpt: threads[1].title,
+    targetHref: "/threads/t2",
+  },
+  {
+    id: "rep3",
+    reporter: users[1],
+    targetType: "thread_reply",
+    targetId: "tr2",
+    reason: "ネタバレ注意の無いネタバレです。",
+    status: "dismissed",
+    createdAt: "2026-06-09T08:00:00+09:00",
+    excerpt: threadReplies[1].body,
+    targetHref: "/threads/t1#res-2",
+  },
+];
 
 export const trendingTags = [
   { tag: "花様年華", count: 482 },
