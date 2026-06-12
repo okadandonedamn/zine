@@ -32,12 +32,27 @@ v1.1 §3-2の注記「既に実装済みの場合は実装側を正とする」�
 - ✅ レス番号採番: DB関数 post_thread_reply()(単一トランザクション)
 - ✅ reports.handled_by
 
+## 2026-06-12 追加実装(Phase 4 完了・Phase 5 前進)
+
+- ✅ /about: 利用規約・プライバシーポリシー・通報窓口の簡易版+TMDB帰属表示(§6-5)。
+  サイドバーのフッターから到達。友人公開の条件を満たした
+- ✅ 月間総括カード(Phase 4 完了): /records/stats に表示。集計は lib/recap.ts の
+  純粋関数(年間総括 Phase 7 で月→年に拡張して再利用)。プレビューはDOM、
+  保存はcanvas描画でPNG。色・フォントは実行時にCSS変数から読む(hex直書きなし)
+- ✅ コレクションUI(Phase 5): /collections・/collections/new・/collections/[id]。
+  作品ページに「この作品を含むコレクション」+追加フォーム、プロフィールに
+  コレクションタブ。作品の追加は作品ページから行う導線(コレクション詳細での
+  作品検索は持たない)。collection_items.position は所有者しか書かないため
+  件数採番(レス番号の単一トランザクション規約はスレッド専用)
+- ✅ タグフォローUI(Phase 5): /tags/[name](タグの活動一覧+フォローボタン)。
+  toggleTagFollow が tags 行を必要時に作成 → follows.tag_id の多態フォロー。
+  TagBadge・トレンド・検索チップのリンク先は /tags/ へ。フォロー中のタグは
+  フォロー一覧ページに表示。タグの活動一覧は posts/reviews/articles の
+  tags 配列 → feed_items(fetchFeed の sourceIds オプション)
+
 ## 未着手(v1.1ロードマップ)
 
-- 月間総括カード(Wrapped型・画像共有)— Phase 4
-- コレクションUI(/collections)— Phase 5
-- タグフォローのUI(スキーマは対応済み)— Phase 5
 - 安全三点セット(CAPTCHA/連投制限/NGワード)— Phase 6 一般公開前
 - 「一冊に編む」zines / 年間総括 / リポストのフィード表示 — Phase 7
+- タグフォローを「フォロー中」タイムラインに反映(現状は人のフォローのみ)
 - Playwrightスモークテスト
-- 利用規約・プライバシーポリシー(/about)— 友人公開前に必須
