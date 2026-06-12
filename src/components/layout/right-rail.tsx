@@ -36,7 +36,7 @@ export async function RightRail() {
         <ul className="mt-3 space-y-2.5">
           {trends.map((t, i) => (
             <li key={t.tag}>
-              <Link href={`/search?q=${encodeURIComponent(t.tag)}`} className="group block">
+              <Link href={`/tags/${encodeURIComponent(t.tag)}`} className="group block">
                 <span className="mr-2 font-display text-xs text-subtle">
                   {String(i + 1).padStart(2, "0")}
                 </span>

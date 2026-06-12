@@ -71,7 +71,7 @@ export default async function SearchPage({
             {trends.map((t) => (
               <Link
                 key={t.tag}
-                href={`/search?q=${encodeURIComponent(t.tag)}`}
+                href={`/tags/${encodeURIComponent(t.tag)}`}
                 className="rounded-full border border-line px-3 py-1.5 text-sm text-muted hover:border-accent hover:text-accent"
               >
                 #{t.tag}

@@ -727,6 +727,61 @@ export async function toggleFollow(followeeId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/** タグをフォローする。tags テーブルに無ければ作ってからフォローする */
+export async function toggleTagFollow(name: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const tagName = name.trim().replace(/^#/, "");
+  if (!tagName || tagName.length > 30)
+    return { ok: false, error: "タグ名が正しくありません" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  let { data: tag } = await supabase
+    .from("tags")
+    .select("id")
+    .eq("name", tagName)
+    .maybeSingle();
+  if (!tag) {
+    const { data: created, error } = await supabase
+      .from("tags")
+      .insert({ name: tagName })
+      .select("id")
+      .single();
+    if (error) {
+      // 同時作成で先を越されたら引き直す
+      if (error.code === "23505") {
+        ({ data: tag } = await supabase
+          .from("tags")
+          .select("id")
+          .eq("name", tagName)
+          .maybeSingle());
+      }
+      if (!tag) return { ok: false, error: error.message };
+    } else {
+      tag = created;
+    }
+  }
+  if (!tag) return { ok: false, error: "タグを作成できませんでした" };
+
+  const { data: existing } = await supabase
+    .from("follows")
+    .select("id")
+    .eq("follower_id", user.id)
+    .eq("tag_id", tag.id)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("follows").delete().eq("id", existing.id);
+  } else {
+    const { error } = await supabase
+      .from("follows")
+      .insert({ follower_id: user.id, tag_id: tag.id });
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath(`/tags/${encodeURIComponent(tagName)}`);
+  return { ok: true };
+}
+
 /** 作品をフォローする(新しいレビュー・スレッドを追うため) */
 export async function toggleWorkFollow(workId: string): Promise<ActionResult> {
   if (!supabaseEnabled) return { ok: true, mock: true };

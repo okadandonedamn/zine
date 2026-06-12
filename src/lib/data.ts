@@ -188,6 +188,8 @@ async function fetchFeed(opts: {
   userIds?: string[];
   id?: string;
   ids?: string[];
+  /** 各本体テーブルの行ID(タグ検索などで使う) */
+  sourceIds?: string[];
 }): Promise<FeedItem[]> {
   const supabase = await createClient();
   let q = supabase
@@ -203,6 +205,7 @@ async function fetchFeed(opts: {
   if (opts.userIds) q = q.in("user_id", opts.userIds);
   if (opts.id) q = q.eq("id", opts.id);
   if (opts.ids) q = q.in("id", opts.ids);
+  if (opts.sourceIds) q = q.in("source_id", opts.sourceIds);
 
   const { data: rows, error } = await q;
   if (error || !rows) return [];
@@ -513,6 +516,78 @@ export async function isFollowingWork(workId: string): Promise<boolean> {
     .eq("work_id", workId)
     .maybeSingle();
   return Boolean(data);
+}
+
+/* =============================================================
+ * タグ(多態フォロー: タグ)
+ * ============================================================= */
+
+/** このタグが付いた活動(短文・レビュー・記事) */
+export async function getFeedByTag(tag: string): Promise<FeedItem[]> {
+  if (!supabaseEnabled) {
+    return mock.feedItems
+      .filter((f) =>
+        f.type === "post" || f.type === "quote"
+          ? f.post.tags.includes(tag)
+          : f.type === "review"
+            ? f.review.tags.includes(tag)
+            : f.type === "article"
+              ? f.article.tags.includes(tag)
+              : false,
+      )
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }
+  const supabase = await createClient();
+  const [posts, reviews, articles] = await Promise.all([
+    supabase.from("posts").select("id").contains("tags", [tag]).is("deleted_at", null).limit(50),
+    supabase.from("reviews").select("id").contains("tags", [tag]).limit(50),
+    supabase.from("articles").select("id").contains("tags", [tag]).eq("status", "published").limit(50),
+  ]);
+  const sourceIds = [
+    ...(posts.data ?? []),
+    ...(reviews.data ?? []),
+    ...(articles.data ?? []),
+  ].map((r) => r.id);
+  if (sourceIds.length === 0) return [];
+  return fetchFeed({ sourceIds });
+}
+
+/** ログイン中ユーザーがこのタグをフォローしているか */
+export async function isFollowingTag(name: string): Promise<boolean> {
+  if (!supabaseEnabled) return mock.followedTags.includes(name);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data: tag } = await supabase
+    .from("tags")
+    .select("id")
+    .eq("name", name)
+    .maybeSingle();
+  if (!tag) return false;
+  const { data } = await supabase
+    .from("follows")
+    .select("id")
+    .eq("follower_id", user.id)
+    .eq("tag_id", tag.id)
+    .maybeSingle();
+  return Boolean(data);
+}
+
+/** ユーザーがフォローしているタグ名の一覧 */
+export async function getFollowedTags(userId: string): Promise<string[]> {
+  if (!supabaseEnabled) {
+    return userId === mock.currentUser.id ? mock.followedTags : [];
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("follows")
+    .select("tag:tags(name)")
+    .eq("follower_id", userId)
+    .not("tag_id", "is", null)
+    .limit(100);
+  return ((data as Row[] | null) ?? []).map((r) => r.tag?.name).filter(Boolean);
 }
 
 /* =============================================================

@@ -712,6 +712,9 @@ export const collectionItems: Record<string, CollectionItem[]> = {
   col3: [{ work: works[5], position: 0 }],
 };
 
+/** ログイン中ユーザー(モック)がフォローしているタグ */
+export const followedTags = ["夜に聴く一枚", "見ることの訓練"];
+
 export const trendingTags = [
   { tag: "花様年華", count: 482 },
   { tag: "夜に聴く一枚", count: 391 },
