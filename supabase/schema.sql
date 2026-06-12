@@ -406,8 +406,9 @@ begin
     insert into feed_items (user_id, item_type, source_id, work_id, visibility)
     values (new.user_id, 'review', new.id, new.work_id, new.visibility);
   elsif tg_table_name = 'record_sessions' then
-    insert into feed_items (user_id, item_type, source_id, visibility)
-    values (new.user_id, 'record', new.id, new.visibility);
+    insert into feed_items (user_id, item_type, source_id, work_id, visibility)
+    values (new.user_id, 'record', new.id,
+            (select work_id from records where id = new.record_id), new.visibility);
   elsif tg_table_name = 'articles' then
     if new.status = 'published' then
       insert into feed_items (user_id, item_type, source_id, visibility)

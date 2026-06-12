@@ -190,6 +190,8 @@ async function fetchFeed(opts: {
   ids?: string[];
   /** 各本体テーブルの行ID(タグ検索などで使う) */
   sourceIds?: string[];
+  /** フォロー中タブ用: 人・作品・タグ付き活動のいずれかに一致(OR条件) */
+  anyOf?: { userIds: string[]; workIds: string[]; sourceIds: string[] };
 }): Promise<FeedItem[]> {
   const supabase = await createClient();
   let q = supabase
@@ -206,6 +208,17 @@ async function fetchFeed(opts: {
   if (opts.id) q = q.eq("id", opts.id);
   if (opts.ids) q = q.in("id", opts.ids);
   if (opts.sourceIds) q = q.in("source_id", opts.sourceIds);
+  if (opts.anyOf) {
+    const parts = [
+      opts.anyOf.userIds.length > 0 &&
+        `user_id.in.(${opts.anyOf.userIds.join(",")})`,
+      opts.anyOf.workIds.length > 0 &&
+        `work_id.in.(${opts.anyOf.workIds.join(",")})`,
+      opts.anyOf.sourceIds.length > 0 &&
+        `source_id.in.(${opts.anyOf.sourceIds.join(",")})`,
+    ].filter((p): p is string => Boolean(p));
+    q = q.or(parts.join(","));
+  }
 
   const { data: rows, error } = await q;
   if (error || !rows) return [];
@@ -357,7 +370,9 @@ export async function getTimeline(tab: TimelineTab): Promise<FeedItem[]> {
     if (filter) return sorted.filter((i) => filter.includes(i.type));
     if (tab === "following") {
       const ids = mock.users.slice(1, 4).map((u) => u.id);
-      return sorted.filter((i) => ids.includes(i.user.id));
+      return sorted.filter(
+        (i) => ids.includes(i.user.id) || feedItemHasAnyTag(i, mock.followedTags),
+      );
     }
     return sorted;
   }
@@ -366,14 +381,18 @@ export async function getTimeline(tab: TimelineTab): Promise<FeedItem[]> {
     const me = await getCurrentUser();
     if (!me) return [];
     const supabase = await createClient();
+    // 多態フォロー(人/作品/タグ)を一括で引き、三態すべてを反映する
     const { data } = await supabase
       .from("follows")
-      .select("followee_user_id")
-      .eq("follower_id", me.id)
-      .not("followee_user_id", "is", null);
-    const ids = (data ?? []).map((f) => f.followee_user_id);
-    if (ids.length === 0) return [];
-    return fetchFeed({ userIds: ids });
+      .select("followee_user_id, work_id, tag:tags(name)")
+      .eq("follower_id", me.id);
+    const follows = ((data as Row[] | null) ?? []);
+    const userIds = follows.map((f) => f.followee_user_id).filter(Boolean);
+    const workIds = follows.map((f) => f.work_id).filter(Boolean);
+    const tagNames = follows.map((f) => f.tag?.name).filter(Boolean);
+    const sourceIds = await fetchTaggedSourceIds(tagNames);
+    if (userIds.length + workIds.length + sourceIds.length === 0) return [];
+    return fetchFeed({ anyOf: { userIds, workIds, sourceIds } });
   }
   return fetchFeed({ types: TAB_TYPE_FILTER[tab] });
 }
@@ -522,32 +541,43 @@ export async function isFollowingWork(workId: string): Promise<boolean> {
  * タグ(多態フォロー: タグ)
  * ============================================================= */
 
-/** このタグが付いた活動(短文・レビュー・記事) */
-export async function getFeedByTag(tag: string): Promise<FeedItem[]> {
-  if (!supabaseEnabled) {
-    return mock.feedItems
-      .filter((f) =>
-        f.type === "post" || f.type === "quote"
-          ? f.post.tags.includes(tag)
-          : f.type === "review"
-            ? f.review.tags.includes(tag)
-            : f.type === "article"
-              ? f.article.tags.includes(tag)
-              : false,
-      )
-      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-  }
+/** タイムライン項目にいずれかのタグが付いているか(モック用) */
+function feedItemHasAnyTag(item: FeedItem, tags: string[]): boolean {
+  const itemTags =
+    item.type === "post" || item.type === "quote"
+      ? item.post.tags
+      : item.type === "review"
+        ? item.review.tags
+        : item.type === "article"
+          ? item.article.tags
+          : [];
+  return itemTags.some((t) => tags.includes(t));
+}
+
+/** いずれかのタグが付いた本体行のID(posts / reviews / articles) */
+async function fetchTaggedSourceIds(tags: string[]): Promise<string[]> {
+  if (tags.length === 0) return [];
   const supabase = await createClient();
   const [posts, reviews, articles] = await Promise.all([
-    supabase.from("posts").select("id").contains("tags", [tag]).is("deleted_at", null).limit(50),
-    supabase.from("reviews").select("id").contains("tags", [tag]).limit(50),
-    supabase.from("articles").select("id").contains("tags", [tag]).eq("status", "published").limit(50),
+    supabase.from("posts").select("id").overlaps("tags", tags).is("deleted_at", null).limit(50),
+    supabase.from("reviews").select("id").overlaps("tags", tags).limit(50),
+    supabase.from("articles").select("id").overlaps("tags", tags).eq("status", "published").limit(50),
   ]);
-  const sourceIds = [
+  return [
     ...(posts.data ?? []),
     ...(reviews.data ?? []),
     ...(articles.data ?? []),
   ].map((r) => r.id);
+}
+
+/** このタグが付いた活動(短文・レビュー・記事) */
+export async function getFeedByTag(tag: string): Promise<FeedItem[]> {
+  if (!supabaseEnabled) {
+    return mock.feedItems
+      .filter((f) => feedItemHasAnyTag(f, [tag]))
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }
+  const sourceIds = await fetchTaggedSourceIds([tag]);
   if (sourceIds.length === 0) return [];
   return fetchFeed({ sourceIds });
 }

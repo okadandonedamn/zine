@@ -15,6 +15,15 @@ export function ArticleFeedCard({ item }: { item: Extract<FeedItem, { type: "art
       actionText="記事を公開しました"
       href={`/articles/${article.id}`}
       counts={{ likes: article.likes, comments: article.comments }}
+      footer={
+        article.tags.length > 0 ? (
+          <p className="mt-2 flex flex-wrap gap-2">
+            {article.tags.map((t) => (
+              <TagBadge key={t} tag={t} />
+            ))}
+          </p>
+        ) : undefined
+      }
     >
       {/* 記事カードは「誌面」らしく。カバー帯+明朝のタイトル */}
       <div className="overflow-hidden rounded-md border border-line">
@@ -30,9 +39,6 @@ export function ArticleFeedCard({ item }: { item: Extract<FeedItem, { type: "art
               <Clock size={12} />
               読了{article.readMinutes}分
             </span>
-            {article.tags.map((t) => (
-              <TagBadge key={t} tag={t} />
-            ))}
           </div>
         </div>
       </div>

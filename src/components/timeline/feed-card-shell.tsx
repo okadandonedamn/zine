@@ -16,6 +16,7 @@ export function FeedCardShell({
   typeLabel,
   href,
   actionText,
+  footer,
   children,
   counts,
   viewer,
@@ -28,6 +29,8 @@ export function FeedCardShell({
   href?: string;
   /** 「が記事を公開しました」のような行動文。省略可 */
   actionText?: string;
+  /** hrefのリンクで包まない追加行。タグ等のリンクを置く(<a>のネスト防止) */
+  footer?: React.ReactNode;
   children: React.ReactNode;
   counts?: { likes: number; comments: number; reposts?: number; bookmarks?: number };
   viewer?: ViewerState;
@@ -61,6 +64,7 @@ export function FeedCardShell({
             ) : (
               children
             )}
+            {footer}
           </div>
           {counts && (
             <FeedActions

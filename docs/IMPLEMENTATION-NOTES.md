@@ -50,9 +50,14 @@ v1.1 §3-2の注記「既に実装済みの場合は実装側を正とする」�
   フォロー一覧ページに表示。タグの活動一覧は posts/reviews/articles の
   tags 配列 → feed_items(fetchFeed の sourceIds オプション)
 
+- ✅ 「フォロー中」タイムラインに多態フォロー三態を反映(2026-06-12):
+  人(user_id)・作品(feed_items.work_id)・タグ(フォロー中タグが付いた
+  posts/reviews/articles の source_id)を fetchFeed の anyOf(OR条件)で取得。
+  記録の feed_items に work_id が無かったため migration-003 で供給トリガーを
+  修正+埋め戻し(feed供給トリガーは規約上の許容例外)
+
 ## 未着手(v1.1ロードマップ)
 
 - 安全三点セット(CAPTCHA/連投制限/NGワード)— Phase 6 一般公開前
 - 「一冊に編む」zines / 年間総括 / リポストのフィード表示 — Phase 7
-- タグフォローを「フォロー中」タイムラインに反映(現状は人のフォローのみ)
 - Playwrightスモークテスト
