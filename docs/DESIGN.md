@@ -472,7 +472,28 @@ zine/
 | position | int | 並び順 |
 | note | text NULL | 一言キュレーション |
 
-**将来テーブル(草案・Phase 7で定義)**: `zines`(編まれた冊子)/ `zine_items`(post_idを束ねる)。スキーマ確定はPhase 7冒頭で行い、ここに追記する。
+**zines(一冊に編む。Phase 7で確定)**
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| id | uuid PK | |
+| owner_id | uuid FK→profiles | |
+| title | text | 冊子の題 |
+| description | text | まえがき(任意) |
+| is_private | boolean default false | |
+| created_at | timestamptz | |
+
+**zine_items**
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| zine_id + item_type + source_id | 複合PK | |
+| item_type | text | `article` / `review`(ポリモーフィック。草案の post_id 束ねから変更: 編むのは長文) |
+| source_id | uuid | articles.id / reviews.id |
+| position | int | 並び順(所有者しか書かないため件数採番) |
+
+RLSは collections と同型(is_private = false or 本人。zine_items は親の可視性に従う)。
+削除は物理削除でよい(冊子は索引であり、本体の記事・レビューは残る)。
 
 ### 6-2. RLS(Row Level Security)の方針
 

@@ -223,6 +223,32 @@ export interface CollectionItem {
   position: number;
 }
 
+/** 冊子に編める素材の種類(zine_items.item_type に対応) */
+export type ZineItemType = "article" | "review";
+
+/** 冊子内の1ページ分。type に応じて article / review のどちらかが入る */
+export interface ZineItem {
+  type: ZineItemType;
+  position: number;
+  article?: Article;
+  review?: Review;
+  /** review のときの対象作品 */
+  work?: Work;
+}
+
+/** 一冊に編まれたデジタル冊子(zines テーブルに対応)。Phase 7 */
+export interface Zine {
+  id: string;
+  title: string;
+  description: string;
+  isPrivate: boolean;
+  itemCount: number;
+  createdAt: string;
+  owner?: User;
+  /** 詳細取得時のみ埋まる(position順) */
+  items?: ZineItem[];
+}
+
 /** ログイン中ユーザーがこのフィード項目に対して行ったリアクション */
 export interface ViewerState {
   liked: boolean;

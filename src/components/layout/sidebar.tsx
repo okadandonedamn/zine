@@ -6,6 +6,7 @@ import {
   Bell,
   Bookmark,
   BookMarked,
+  BookOpen,
   Home,
   Layers,
   Library,
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/works", label: "作品", icon: Library },
   { href: "/records", label: "記録", icon: BookMarked },
   { href: "/collections", label: "コレクション", icon: Layers },
+  { href: "/zines", label: "冊子", icon: BookOpen },
   { href: "/goals", label: "目標", icon: Target },
   { href: "/bookmarks", label: "ブックマーク", icon: Bookmark },
 ];
@@ -41,7 +43,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   return (
-    <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col justify-between border-r border-line px-3 py-5 md:flex">
+    <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col justify-between border-r border-line px-3 py-5 md:flex print:hidden">
       <div className="space-y-6">
         <Link href="/home" className="block px-3">
           <span className="font-display text-3xl font-bold tracking-widest">ZINE</span>

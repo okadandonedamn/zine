@@ -708,6 +708,94 @@ export async function deleteCollection(collectionId: string): Promise<ActionResu
   return { ok: true };
 }
 
+/* ---------- 一冊に編む(zines。Phase 7) ---------- */
+const zineInput = z.object({
+  title: z.string().min(1).max(60),
+  description: z.string().max(500).default(""),
+  isPrivate: z.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        type: z.enum(["article", "review"]),
+        sourceId: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+/** 自分の記事・レビューを選んで一冊に編む(選んだ順がページ順になる) */
+export async function createZine(
+  input: z.infer<typeof zineInput>,
+): Promise<{ ok: true; mock?: boolean; id?: string } | { ok: false; error: string }> {
+  if (findNgWord(input.title, input.description))
+    return { ok: false, error: NG_WORD_ERROR };
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const parsed = zineInput.safeParse(input);
+  if (!parsed.success)
+    return { ok: false, error: "題と素材(1つ以上)を確認してください" };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const d = parsed.data;
+
+  // 編めるのは自分の素材だけ(他人の記事を冊子に取り込ませない)
+  const ids = (t: "article" | "review") =>
+    d.items.filter((i) => i.type === t).map((i) => i.sourceId);
+  const [mineArticles, mineReviews] = await Promise.all([
+    ids("article").length > 0
+      ? supabase.from("articles").select("id").eq("user_id", user.id).in("id", ids("article"))
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    ids("review").length > 0
+      ? supabase.from("reviews").select("id").eq("user_id", user.id).in("id", ids("review"))
+      : Promise.resolve({ data: [] as { id: string }[] }),
+  ]);
+  const owned = new Set(
+    [...(mineArticles.data ?? []), ...(mineReviews.data ?? [])].map((r) => r.id),
+  );
+  if (d.items.some((i) => !owned.has(i.sourceId)))
+    return { ok: false, error: "自分の記事・レビューだけを編めます" };
+
+  const { data: zine, error } = await supabase
+    .from("zines")
+    .insert({
+      owner_id: user.id,
+      title: d.title,
+      description: d.description,
+      is_private: d.isPrivate,
+    })
+    .select("id")
+    .single();
+  if (error || !zine) return { ok: false, error: error?.message ?? "保存に失敗しました" };
+
+  // 並び順は選んだ順。所有者しか書かないため添字採番でよい(コレクションと同じ)
+  const { error: itemsError } = await supabase.from("zine_items").insert(
+    d.items.map((i, index) => ({
+      zine_id: zine.id,
+      item_type: i.type,
+      source_id: i.sourceId,
+      position: index,
+    })),
+  );
+  if (itemsError) return { ok: false, error: itemsError.message };
+  revalidatePath("/zines");
+  return { ok: true, id: zine.id };
+}
+
+/** 冊子を削除(索引なので物理削除でよい。本体の記事・レビューは残る) */
+export async function deleteZine(zineId: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+  const { error } = await supabase
+    .from("zines")
+    .delete()
+    .eq("id", zineId)
+    .eq("owner_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/zines");
+  return { ok: true };
+}
+
 /* ---------- リアクション(いいね / ブックマーク / リポスト) ---------- */
 
 async function toggleReaction(

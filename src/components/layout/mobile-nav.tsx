@@ -24,11 +24,11 @@ export function MobileNav({ meUsername }: { meUsername: string | null }) {
       <Link
         href="/post/new"
         aria-label="投稿する"
-        className="fixed bottom-20 right-4 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg md:hidden"
+        className="fixed bottom-20 right-4 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg md:hidden print:hidden"
       >
         <PenLine size={22} />
       </Link>
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-line bg-background/95 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-line bg-background/95 backdrop-blur md:hidden print:hidden">
         {items.map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (

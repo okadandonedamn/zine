@@ -78,9 +78,19 @@ v1.1 §3-2の注記「既に実装済みの場合は実装側を正とする」�
   モックモードの devサーバー(port 3100)を webServer として自動起動。
   モックデータを変えたらテストの期待値も見直すこと
 
+- ✅ 「一冊に編む」zines(Phase 7 着手・2026-06-13): migration-004 で
+  zines / zine_items を確定(collections と同型の RLS。item_type は
+  article/review のポリモーフィック。草案の post_id 束ねから変更し、
+  DESIGN.md §5 に追記済み)。/zines(一覧)・/zines/new(自分の記事+
+  レビューをチェックした順に編む)・/zines/[id](表紙・目次・誌面・奥付)。
+  PDF書き出しはブラウザ印刷で行い、レイアウトの周辺UIは print:hidden、
+  誌面は print:break-before-page で篇ごとに改ページ。冊子の削除は
+  物理削除(索引であり本体は残る。コレクションと同じ扱い)
+
 ## 未着手(v1.1ロードマップ)
 
 - 安全三点セットの残り1つ: CAPTCHA(Turnstile)— Supabase Auth設定+
   ログイン画面への組み込み。一般公開前に必須
-- 「一冊に編む」zines / 年間総括 / リポストのフィード表示 — Phase 7
+- Phase 7 の残り: 年間総括(lib/recap.ts の月→年拡張)/ リポスト・引用の
+  フィード表示 / トレンドタグ・おすすめ強化
 - 語り場レスのいいねボタン(thread_reply_likes)の配線(現状は表示のみ)

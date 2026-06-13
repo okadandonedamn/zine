@@ -47,3 +47,13 @@ test.describe("語り場と安全(Phase 6)", () => {
     await expect(page.getByText("未対応(2)")).toBeVisible();
   });
 });
+
+test.describe("編纂と祝祭(Phase 7)", () => {
+  test("冊子の誌面が表紙・目次・本文・奥付で構成される", async ({ page }) => {
+    await page.goto("/zines/z1");
+    await expect(page.getByRole("heading", { name: /暗がりの観客/ })).toBeVisible();
+    await expect(page.getByText("目次 / CONTENTS")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "『花様年華』評" })).toBeVisible();
+    await expect(page.getByText("BOUND WITH ZINE")).toBeVisible();
+  });
+});

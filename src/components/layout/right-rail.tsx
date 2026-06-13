@@ -27,7 +27,7 @@ export async function RightRail() {
   const usersToFollow = allUsers.filter((u) => u.id !== me?.id).slice(0, 3);
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-80 shrink-0 space-y-4 overflow-y-auto border-l border-line px-5 py-6 xl:block">
+    <aside className="sticky top-0 hidden h-screen w-80 shrink-0 space-y-4 overflow-y-auto border-l border-line px-5 py-6 xl:block print:hidden">
       {/* トレンド */}
       <Card className="p-4">
         <h2 className="font-display text-sm font-semibold tracking-wider text-muted">

@@ -30,6 +30,8 @@ import {
   type ViewerState,
   type Work,
   type WorkCategory,
+  type Zine,
+  type ZineItem,
 } from "./types";
 
 export { TIMELINE_TABS } from "./timeline";
@@ -621,6 +623,133 @@ export async function getFollowedTags(userId: string): Promise<string[]> {
     .not("tag_id", "is", null)
     .limit(100);
   return ((data as Row[] | null) ?? []).map((r) => r.tag?.name).filter(Boolean);
+}
+
+/* =============================================================
+ * 一冊に編む(zines。Phase 7)
+ * ============================================================= */
+
+const mapZine = (row: Row): Zine => ({
+  id: row.id,
+  title: row.title,
+  description: row.description ?? "",
+  isPrivate: row.is_private ?? false,
+  itemCount: row.zine_items?.[0]?.count ?? 0,
+  createdAt: row.created_at,
+  owner: row.owner ? mapProfile(row.owner) : undefined,
+});
+
+/** 自分の冊子一覧 */
+export async function getMyZines(): Promise<Zine[]> {
+  if (!supabaseEnabled) {
+    return mock.zines.filter((z) => z.owner?.id === mock.currentUser.id);
+  }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("zines")
+    .select("*, owner:profiles(*), zine_items(count)")
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: false });
+  return ((data as Row[] | null) ?? []).map(mapZine);
+}
+
+/** 冊子1冊。items(記事・レビュー本体)を position 順に解決する */
+export async function getZine(id: string): Promise<Zine | undefined> {
+  if (!supabaseEnabled) return mock.zines.find((z) => z.id === id);
+  const supabase = await createClient();
+  const { data: zine } = await supabase
+    .from("zines")
+    .select("*, owner:profiles(*), zine_items(item_type, source_id, position)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!zine) return undefined;
+
+  const itemRows = [...((zine.zine_items as Row[] | null) ?? [])].sort(
+    (a, b) => a.position - b.position,
+  );
+  const idsOf = (t: string) =>
+    itemRows.filter((r) => r.item_type === t).map((r) => r.source_id);
+  const fetchByIds = async (table: string, select: string, ids: string[]) => {
+    if (ids.length === 0) return new Map<string, Row>();
+    const { data } = await supabase.from(table).select(select).in("id", ids);
+    return new Map(((data as Row[] | null) ?? []).map((d) => [d.id as string, d]));
+  };
+  const [articleMap, reviewMap] = await Promise.all([
+    fetchByIds("articles", "*, article_works(work_id)", idsOf("article")),
+    fetchByIds(
+      "reviews",
+      `*, review_scores(axis_name, score, display_order), work:works(${WORK_SELECT})`,
+      idsOf("review"),
+    ),
+  ]);
+  const shelfRatings = await fetchShelfRatings([...reviewMap.values()]);
+
+  const items: ZineItem[] = [];
+  for (const r of itemRows) {
+    if (r.item_type === "article") {
+      const a = articleMap.get(r.source_id);
+      if (a) items.push({ type: "article", position: r.position, article: mapArticle(a) });
+    } else if (r.item_type === "review") {
+      const rv = reviewMap.get(r.source_id);
+      if (rv?.work)
+        items.push({
+          type: "review",
+          position: r.position,
+          review: mapReview(rv, shelfRatings.get(`${rv.user_id}:${rv.work_id}`)),
+          work: mapWork(rv.work),
+        });
+    }
+  }
+  return { ...mapZine(zine), itemCount: items.length, items };
+}
+
+/** 冊子に編める自分の素材(公開済みの記事+レビュー) */
+export async function getMyBindableItems(): Promise<{
+  articles: Article[];
+  reviews: { review: Review; work?: Work }[];
+}> {
+  if (!supabaseEnabled) {
+    return {
+      articles: mock.articles,
+      reviews: mock.reviews.map((r) => ({
+        review: r,
+        work: mock.works.find((w) => w.id === r.workId),
+      })),
+    };
+  }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { articles: [], reviews: [] };
+  const [a, r] = await Promise.all([
+    supabase
+      .from("articles")
+      .select("*, article_works(work_id)")
+      .eq("user_id", user.id)
+      .eq("status", "published")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("reviews")
+      .select(
+        `*, review_scores(axis_name, score, display_order), work:works(${WORK_SELECT})`,
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+  ]);
+  const reviewRows = (r.data as Row[] | null) ?? [];
+  const shelf = await fetchShelfRatings(reviewRows);
+  return {
+    articles: ((a.data as Row[] | null) ?? []).map(mapArticle),
+    reviews: reviewRows.map((row) => ({
+      review: mapReview(row, shelf.get(`${row.user_id}:${row.work_id}`)),
+      work: row.work ? mapWork(row.work) : undefined,
+    })),
+  };
 }
 
 /* =============================================================

@@ -18,6 +18,7 @@ import type {
   ThreadReply,
   User,
   Work,
+  Zine,
 } from "./types";
 
 export const users: User[] = [
@@ -717,6 +718,25 @@ export const collectionItems: Record<string, CollectionItem[]> = {
 
 /** ログイン中ユーザー(モック)がフォローしているタグ */
 export const followedTags = ["夜に聴く一枚", "見ることの訓練"];
+
+/** 一冊に編まれた冊子(モック)。Phase 7 */
+export const zines: Zine[] = [
+  {
+    id: "z1",
+    title: "暗がりの観客 — 二〇二六年上半期",
+    description:
+      "この半年、映画館の暗がりと深夜のスピーカーの前で考えたことを一冊に編んだ。順番に意味がある。",
+    isPrivate: false,
+    itemCount: 3,
+    createdAt: "2026-06-12T20:00:00+09:00",
+    owner: users[0],
+    items: [
+      { type: "article", position: 0, article: articles[0] },
+      { type: "review", position: 1, review: reviews[0], work: works[0] },
+      { type: "article", position: 2, article: articles[2] },
+    ],
+  },
+];
 
 /** 通報(モック)。/moderation の処理フロー確認用 */
 export const reports: Report[] = [
