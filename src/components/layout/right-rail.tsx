@@ -23,8 +23,19 @@ export async function RightRail() {
     getUsers(),
   ]);
   const goals = allGoals.slice(0, 2);
-  const works = allWorks.slice(0, 3);
-  const usersToFollow = allUsers.filter((u) => u.id !== me?.id).slice(0, 3);
+  const works = [...allWorks]
+    .sort(
+      (a, b) =>
+        b.reviewCount * 3 +
+        b.recordCount * 2 +
+        b.avgRating -
+        (a.reviewCount * 3 + a.recordCount * 2 + a.avgRating),
+    )
+    .slice(0, 3);
+  const usersToFollow = allUsers
+    .filter((u) => u.id !== me?.id)
+    .sort((a, b) => b.followers - a.followers || a.displayName.localeCompare(b.displayName, "ja"))
+    .slice(0, 3);
 
   return (
     <aside className="sticky top-0 hidden h-screen w-80 shrink-0 space-y-4 overflow-y-auto border-l border-line px-5 py-6 xl:block print:hidden">
@@ -111,7 +122,7 @@ export async function RightRail() {
       {/* おすすめユーザー */}
       <Card className="p-4">
         <h2 className="font-display text-sm font-semibold tracking-wider text-muted">
-          批評の隣人たち
+          おすすめユーザー
         </h2>
         <ul className="mt-3 space-y-3">
           {usersToFollow.map((u) => (

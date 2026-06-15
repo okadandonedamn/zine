@@ -18,6 +18,7 @@ function matchWork(w: Work, q: string) {
 }
 
 function matchFeedItem(f: FeedItem, q: string) {
+  if (f.type === "repost") return matchFeedItem(f.reposted, q);
   const text =
     f.type === "post" || f.type === "quote"
       ? f.post.body

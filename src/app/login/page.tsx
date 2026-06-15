@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,32 +13,68 @@ import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const turnstileRequired = Boolean(turnstileSiteKey);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const resetCaptcha = useCallback(() => {
+    setCaptchaToken(null);
+  }, []);
+
+  const verifyCaptcha = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  function selectMode(nextMode: "signin" | "signup") {
+    setMode(nextMode);
+    setMessage(null);
+    setCaptchaToken(null);
+    setCaptchaResetSignal((value) => value + 1);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!supabaseEnabled) return;
+    if (turnstileRequired && !captchaToken) {
+      setMessage("認証チェックを完了してください。");
+      return;
+    }
     setLoading(true);
     setMessage(null);
     const supabase = createClient();
+    const authOptions = captchaToken ? { captchaToken } : undefined;
 
     if (mode === "signin") {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+        options: authOptions,
+      });
       if (error) {
         setMessage("ログインできませんでした: " + error.message);
+        setCaptchaToken(null);
+        setCaptchaResetSignal((value) => value + 1);
         setLoading(false);
         return;
       }
       router.push("/home");
       router.refresh();
     } else {
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: authOptions,
+      });
       if (error) {
         setMessage("登録できませんでした: " + error.message);
+        setCaptchaToken(null);
+        setCaptchaResetSignal((value) => value + 1);
         setLoading(false);
         return;
       }
@@ -90,7 +127,7 @@ export default function LoginPage() {
                 <button
                   key={t.key}
                   type="button"
-                  onClick={() => setMode(t.key)}
+                  onClick={() => selectMode(t.key)}
                   className={cn(
                     "flex-1 cursor-pointer rounded-sm py-1.5 transition-colors",
                     mode === t.key ? "bg-surface-2 font-semibold" : "text-subtle",
@@ -123,12 +160,30 @@ export default function LoginPage() {
                   placeholder="6文字以上"
                 />
               </div>
+              {turnstileSiteKey ? (
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  resetSignal={captchaResetSignal}
+                  onVerify={verifyCaptcha}
+                  onExpire={resetCaptcha}
+                />
+              ) : (
+                <p className="rounded-md border border-line bg-surface-2 p-3 text-xs leading-6 text-subtle">
+                  Turnstile site key が未設定です。本番公開前に
+                  <code className="mx-1">NEXT_PUBLIC_TURNSTILE_SITE_KEY</code>
+                  を設定し、Supabase Auth 側の CAPTCHA を有効化してください。
+                </p>
+              )}
               {message && (
                 <p className="rounded-md border border-line bg-surface-2 p-3 text-xs leading-6 text-muted">
                   {message}
                 </p>
               )}
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || (turnstileRequired && !captchaToken)}
+              >
                 {loading ? "送信中…" : mode === "signin" ? "ログイン" : "登録する"}
               </Button>
             </form>

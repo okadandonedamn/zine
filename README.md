@@ -3,7 +3,7 @@
 > 文化的活動が流れ、蓄積され、議論され、記録されるSNS
 
 映画・音楽・文学・美術・ファッション・展示・舞台・ゲーム。
-短文投稿、長文記事、レビュー、掲示板スレッド、鑑賞記録 — すべてがひとつのタイムラインに流れ込みます。
+短文投稿、長文記事、レビュー、語り場、鑑賞記録 — すべてがひとつのタイムラインに流れ込みます。タイムラインは「フォロー中 / 最新 / おすすめ」の3種類で、5機能をフィルタできます。
 
 設計の全体像は **[docs/DESIGN.md](./docs/DESIGN.md)**(設計書 v1.1)を参照してください。実装との既知の差分は [docs/IMPLEMENTATION-NOTES.md](./docs/IMPLEMENTATION-NOTES.md) にあります。
 
@@ -21,9 +21,9 @@ http://localhost:3000 を開く。`/` がランディング、`/home` がメイ�
 | Phase | 内容 | 状態 |
 |---|---|---|
 | 1 | 基盤・デザインシステム・AppLayout | ✅ 完了 |
-| 2 | Timeline First(feed_items + 7タブ + 6種カード) | ✅ 完了 |
+| 2 | Timeline First(feed_items + 3フィード + 5機能フィルタ) | ✅ 完了 |
 | 3 | レビュー(星 + 自由評価軸 + 五角形グラフ + テンプレート) | ✅ UI完了 |
-| 4 | 鑑賞記録(ステータス + ログ + カレンダー + 統計 + 目標) | ✅ UI完了 |
+| 4 | 鑑賞記録(ステータス + ログ + カレンダー + 統計 + 月間/年間総括 + 目標) | ✅ UI完了 |
 | 5 | 長文記事(エディタ + 詳細 + 関連作品) | ✅ UI完了 |
 | 6 | 掲示板(板 + スレ + レス + 匿名切替 + 引用返信) | ✅ UI完了 |
 | 7 | Supabase連携(Auth / DB / Storage / RLS / CRUD) | ✅ 完了 |
@@ -62,8 +62,10 @@ src/
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+   NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x...
    ```
-4. `npm run dev` を再起動 → `/login` から新規登録(メール+パスワード)
+4. 一般公開する場合は Supabase の **Authentication > CAPTCHA** で Turnstile を有効化し、Cloudflare Turnstile の secret key を設定する
+5. `npm run dev` を再起動 → `/login` から新規登録(メール+パスワード)
 
    ※ すぐ試したい場合は、Supabaseの **Authentication > Providers > Email** で
    「Confirm email」をオフにするとメール確認なしでログインできます。
@@ -85,6 +87,7 @@ src/
 2. [vercel.com](https://vercel.com) で「Add New > Project」→ リポジトリを選択(設定はデフォルトのままでOK)
 3. **Environment Variables** に以下を設定
    - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Supabaseモードにする場合)
+   - `NEXT_PUBLIC_TURNSTILE_SITE_KEY`(Turnstileを有効化する場合)
    - `NEXT_PUBLIC_SITE_URL` = デプロイ後のURL(例: `https://zine.vercel.app`)— OGP・サイトマップに使われる
 4. Deploy を押す。以後 `git push` のたびに自動デプロイされる
 

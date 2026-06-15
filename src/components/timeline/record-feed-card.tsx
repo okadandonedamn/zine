@@ -15,11 +15,13 @@ export function RecordFeedCard({ item }: { item: Extract<FeedItem, { type: "reco
       user={item.user}
       createdAt={item.createdAt}
       typeLabel="RECORD"
-      actionText={`『${work.title}』${statusFeedText(work.category, record.status)}`}
+      actionText={`「${work.title}」を${statusFeedText(work.category, record.status)}`}
+      href={`/records/${record.id}`}
       counts={{ likes: 0, comments: 0 }}
     >
       <WorkChip work={work} />
       <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <Badge>{record.mode === "rough" ? "ラフ" : "Expert"}</Badge>
         <Badge variant="accent">{statusLabel(work.category, record.status)}</Badge>
         {record.durationMinutes && (
           <span className="flex items-center gap-1">
@@ -51,8 +53,10 @@ export function RecordFeedCard({ item }: { item: Extract<FeedItem, { type: "reco
             {record.place}
           </span>
         )}
-        {record.emotionTags.map((t) => (
-          <Badge key={t}>{t}</Badge>
+        {record.focusScore != null && <Badge>集中 {record.focusScore}</Badge>}
+        {record.satisfactionScore != null && <Badge>満足 {record.satisfactionScore}</Badge>}
+        {record.emotionTags.map((tag) => (
+          <Badge key={tag}>{tag}</Badge>
         ))}
       </div>
       {record.memo && (

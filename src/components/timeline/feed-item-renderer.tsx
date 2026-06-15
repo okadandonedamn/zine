@@ -2,6 +2,7 @@ import { ArticleFeedCard } from "./article-feed-card";
 import { PostCard } from "./post-card";
 import { QuoteCard } from "./quote-card";
 import { RecordFeedCard } from "./record-feed-card";
+import { RepostFeedCard } from "./repost-feed-card";
 import { ReviewFeedCard } from "./review-feed-card";
 import { ThreadFeedCard } from "./thread-feed-card";
 import type { FeedItem } from "@/lib/types";
@@ -17,6 +18,8 @@ export function FeedItemRenderer({ item }: { item: FeedItem }) {
       return <PostCard item={item} />;
     case "quote":
       return <QuoteCard item={item} />;
+    case "repost":
+      return <RepostFeedCard item={item} />;
     case "review":
       return <ReviewFeedCard item={item} />;
     case "record":

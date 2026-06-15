@@ -147,13 +147,20 @@ export interface RecordEntry {
   /** 本棚の星(0.5〜5)。評価の唯一の真実 */
   rating?: number;
   date: string; // ISO
+  mode?: "rough" | "expert";
   durationMinutes?: number;
   pages?: number;
   episodes?: number;
   tracks?: number;
   memo?: string;
+  comment?: string;
+  imageUrls?: string[];
   emotionTags: string[];
   place?: string;
+  focusScore?: number;
+  satisfactionScore?: number;
+  revisitScore?: number;
+  customMetrics?: { label: string; value: number }[];
   visibility: Visibility;
 }
 
@@ -188,6 +195,7 @@ export interface ThreadReply {
   body: string;
   quoteNumber?: number;
   likes: number;
+  viewerLiked?: boolean;
   /** 論理削除済み。行とレス番号は残り「削除済み」と表示する */
   deleted?: boolean;
   createdAt: string;
@@ -264,6 +272,15 @@ export interface Comment {
   createdAt: string;
 }
 
+export interface QuotedFeedPreview {
+  user: User;
+  body: string;
+  workTitle?: string;
+  typeLabel?: string;
+  href?: string;
+  deleted?: boolean;
+}
+
 export type NotificationKind =
   | "like"
   | "comment"
@@ -311,8 +328,9 @@ export type FeedItem = { id: string; user: User; createdAt: string; viewer?: Vie
   | {
       type: "quote";
       post: Post;
-      quoted: { user: User; body: string; workTitle?: string };
+      quoted: QuotedFeedPreview;
     }
+  | { type: "repost"; reposted: FeedItem }
   | { type: "review"; review: Review; work: Work }
   | { type: "record"; record: RecordEntry; work: Work }
   | { type: "article"; article: Article }

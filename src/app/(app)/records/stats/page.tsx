@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { format, subDays } from "date-fns";
 import { Card } from "@/components/ui/card";
-import { DailyMinutesChart } from "@/components/record/stats-charts";
+import { DailyMinutesChart, ExpertMetricsTrendChart } from "@/components/record/stats-charts";
 import { GoalCard } from "@/components/record/goal-card";
 import { RecapCard } from "@/components/record/recap-card";
 import { getCurrentUser, getGoals, getRecords, getStreak, getWorks } from "@/lib/data";
@@ -22,11 +23,9 @@ export default async function RecordStatsPage() {
   const { year, month } = latestRecordMonth(records);
   const recap = buildMonthlyRecap(records, works, year, month);
 
-  // 基準日 = 最新の記録日。記録がなければ今日
   const latest =
     records.map((r) => new Date(r.date)).sort((a, b) => +b - +a)[0] ?? new Date();
 
-  // 直近14日の日別鑑賞時間
   const daily = Array.from({ length: 14 }, (_, i) => {
     const day = subDays(latest, 13 - i);
     const key = format(day, "yyyy-MM-dd");
@@ -36,14 +35,15 @@ export default async function RecordStatsPage() {
     return { day: format(day, "M/d"), minutes };
   });
 
-  const totalMinutes = records.reduce((s, r) => s + (r.durationMinutes ?? 0), 0);
-  const totalPages = records.reduce((s, r) => s + (r.pages ?? 0), 0);
+  const totalMinutes = records.reduce((sum, r) => sum + (r.durationMinutes ?? 0), 0);
+  const totalPages = records.reduce((sum, r) => sum + (r.pages ?? 0), 0);
   const doneCount = records.filter((r) => r.status === "done").length;
+  const roughCount = records.filter((r) => (r.mode ?? "expert") === "rough").length;
+  const expertCount = records.length - roughCount;
 
-  // カテゴリ別件数
   const byCategory = records.reduce<Partial<Record<WorkCategory, number>>>((acc, r) => {
-    const c = workMap.get(r.workId)?.category;
-    if (c) acc[c] = (acc[c] ?? 0) + 1;
+    const category = workMap.get(r.workId)?.category;
+    if (category) acc[category] = (acc[category] ?? 0) + 1;
     return acc;
   }, {});
   const categoryEntries = (Object.entries(byCategory) as [WorkCategory, number][]).sort(
@@ -51,51 +51,86 @@ export default async function RecordStatsPage() {
   );
   const categoryMax = categoryEntries[0]?.[1] ?? 1;
 
+  const expertTrend = records
+    .filter(
+      (record) =>
+        record.focusScore != null ||
+        record.satisfactionScore != null ||
+        record.revisitScore != null,
+    )
+    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+    .map((record) => ({
+      day: format(new Date(record.date), "M/d"),
+      focus: record.focusScore,
+      satisfaction: record.satisfactionScore,
+      revisit: record.revisitScore,
+    }));
+
   return (
     <div className="px-4 py-6 sm:px-6">
       <h1 className="font-display text-2xl font-bold">鑑賞統計</h1>
-      <p className="mt-1 text-sm text-muted">数字で振り返る、あなたの文化的生活。</p>
+      <p className="mt-1 text-sm text-muted">ラフな記録も、濃い記録も同じ生活ログとして集計します。</p>
+      <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        <Link href="/records/recap" className="text-accent hover:underline">
+          年間総括を見る
+        </Link>
+        <Link href="/records" className="text-accent hover:underline">
+          記録タイムラインへ
+        </Link>
+      </div>
 
-      {/* サマリー */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "総鑑賞時間", value: formatMinutes(totalMinutes) },
           { label: "完了した作品", value: `${doneCount}件` },
           { label: "読んだページ", value: `${totalPages}p` },
           { label: "連続記録", value: `${streak}日` },
-        ].map((s) => (
-          <Card key={s.label} className="p-4 text-center">
-            <p className="font-display text-xl font-semibold">{s.value}</p>
-            <p className="mt-1 text-xs text-subtle">{s.label}</p>
+          { label: "ラフ記録", value: `${roughCount}件` },
+          { label: "Expert記録", value: `${expertCount}件` },
+          { label: "全記録", value: `${records.length}件` },
+          { label: "今月の記録", value: `${recap.sessionCount}件` },
+        ].map((stat) => (
+          <Card key={stat.label} className="p-4 text-center">
+            <p className="font-display text-xl font-semibold">{stat.value}</p>
+            <p className="mt-1 text-xs text-subtle">{stat.label}</p>
           </Card>
         ))}
       </div>
 
-      {/* 日別グラフ */}
       <Card className="mt-4 p-5">
         <h2 className="font-display text-sm font-semibold tracking-wider text-muted">
-          日別鑑賞時間(直近14日)
+          日別鑑賞時間
         </h2>
         <div className="mt-3">
           <DailyMinutesChart data={daily} />
         </div>
       </Card>
 
-      {/* カテゴリ別 */}
+      {expertTrend.length > 0 && (
+        <Card className="mt-4 p-5">
+          <h2 className="font-display text-sm font-semibold tracking-wider text-muted">
+            Expert数値の推移
+          </h2>
+          <div className="mt-3">
+            <ExpertMetricsTrendChart data={expertTrend} />
+          </div>
+        </Card>
+      )}
+
       <Card className="mt-4 p-5">
         <h2 className="font-display text-sm font-semibold tracking-wider text-muted">
           カテゴリ別の記録数
         </h2>
         <div className="mt-4 space-y-3">
-          {categoryEntries.map(([c, count]) => (
-            <div key={c} className="flex items-center gap-3 text-sm">
-              <span className="w-20 shrink-0 text-muted">{CATEGORY_LABELS[c]}</span>
+          {categoryEntries.map(([category, count]) => (
+            <div key={category} className="flex items-center gap-3 text-sm">
+              <span className="w-20 shrink-0 text-muted">{CATEGORY_LABELS[category]}</span>
               <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
                 <span
                   className="block h-full rounded-full"
                   style={{
                     width: `${(count / categoryMax) * 100}%`,
-                    background: CATEGORY_COLORS[c],
+                    background: CATEGORY_COLORS[category],
                   }}
                 />
               </span>
@@ -105,12 +140,11 @@ export default async function RecordStatsPage() {
         </div>
       </Card>
 
-      {/* 月間総括カード(Phase 4) */}
       {recap.sessionCount > 0 && (
         <section className="mt-8">
           <h2 className="font-display text-lg font-semibold">月間総括</h2>
           <p className="mt-1 text-sm text-muted">
-            {recap.year}年{recap.month}月のあなたの一枚。画像で保存して共有できます。
+            {recap.year}年{recap.month}月の記録から生成しています。
           </p>
           <div className="mt-4">
             <RecapCard recap={recap} username={me?.username ?? "you"} />
@@ -118,11 +152,10 @@ export default async function RecordStatsPage() {
         </section>
       )}
 
-      {/* 目標 */}
       <h2 className="mt-8 font-display text-lg font-semibold">目標の進捗</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {goals.map((g) => (
-          <GoalCard key={g.id} goal={g} />
+        {goals.map((goal) => (
+          <GoalCard key={goal.id} goal={goal} />
         ))}
       </div>
     </div>

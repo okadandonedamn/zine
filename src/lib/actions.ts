@@ -233,6 +233,7 @@ export async function saveAxisTemplate(input: {
 
 /* ---------- 鑑賞記録 ---------- */
 const recordInput = z.object({
+  mode: z.enum(["rough", "expert"]).default("expert"),
   workId: z.string().min(1),
   status: z.enum(["want", "doing", "done", "stacked", "paused", "rewatch"]),
   date: z.string().min(1),
@@ -242,13 +243,23 @@ const recordInput = z.object({
   tracks: z.number().nullable(),
   place: z.string(),
   memo: z.string().max(300),
+  comment: z.string().max(2000).default(""),
+  imageUrls: z.array(z.string().url()).max(6).default([]),
   emotionTags: z.array(z.string()),
+  focusScore: z.number().min(0).max(10).nullable().default(null),
+  satisfactionScore: z.number().min(0).max(10).nullable().default(null),
+  revisitScore: z.number().min(0).max(10).nullable().default(null),
+  customMetrics: z
+    .array(z.object({ label: z.string().min(1).max(20), value: z.number().min(0).max(100) }))
+    .max(8)
+    .default([]),
   visibility: z.enum(["public", "private"]),
 });
 
 export async function createRecordSession(
   input: z.infer<typeof recordInput>,
 ): Promise<ActionResult> {
+  if (findNgWord(input.memo, input.comment ?? "")) return { ok: false, error: NG_WORD_ERROR };
   if (!supabaseEnabled) return { ok: true, mock: true };
   const parsed = recordInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "入力内容を確認してください" };
@@ -278,18 +289,26 @@ export async function createRecordSession(
     record_id: record.id,
     user_id: user.id,
     consumed_at: new Date(d.date).toISOString(),
+    entry_mode: d.mode,
     duration_minutes: d.durationMinutes,
     pages: d.pages,
     episodes: d.episodes,
     tracks: d.tracks,
     memo: d.memo,
+    comment: d.comment,
+    image_urls: d.imageUrls,
     emotion_tags: d.emotionTags,
     place: d.place || null,
+    focus_score: d.focusScore,
+    satisfaction_score: d.satisfactionScore,
+    revisit_score: d.revisitScore,
+    custom_metrics: d.customMetrics,
     visibility: d.visibility,
   });
   if (sessionError) return { ok: false, error: sessionError.message };
   revalidatePath("/home");
   revalidatePath("/records");
+  revalidatePath("/records/stats");
   return { ok: true };
 }
 
@@ -852,7 +871,114 @@ export async function toggleBookmark(feedItemId: string): Promise<ActionResult> 
 }
 
 export async function toggleRepost(feedItemId: string): Promise<ActionResult> {
-  return toggleReaction("reposts", feedItemId, "repost");
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data: item, error: itemError } = await supabase
+    .from("feed_items")
+    .select("id, user_id, work_id, visibility")
+    .eq("id", feedItemId)
+    .maybeSingle();
+  if (itemError) return { ok: false, error: itemError.message };
+  if (!item) return { ok: false, error: "Feed item not found." };
+  if (item.visibility !== "public") {
+    return { ok: false, error: "公開されている活動だけリポストできます。" };
+  }
+
+  const { data: existing } = await supabase
+    .from("reposts")
+    .select("feed_item_id")
+    .eq("user_id", user.id)
+    .eq("feed_item_id", feedItemId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("reposts")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("feed_item_id", feedItemId);
+    if (error) return { ok: false, error: error.message };
+    await supabase
+      .from("feed_items")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("item_type", "repost")
+      .eq("source_id", feedItemId);
+  } else {
+    const { error } = await supabase
+      .from("reposts")
+      .insert({ user_id: user.id, feed_item_id: feedItemId });
+    if (error) return { ok: false, error: error.message };
+
+    const { error: feedError } = await supabase.from("feed_items").insert({
+      user_id: user.id,
+      item_type: "repost",
+      source_id: feedItemId,
+      work_id: item.work_id ?? null,
+      visibility: "public",
+    });
+    if (feedError) {
+      await supabase
+        .from("reposts")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("feed_item_id", feedItemId);
+      return { ok: false, error: feedError.message };
+    }
+
+    await notify({
+      userId: item.user_id,
+      actorId: user.id,
+      kind: "repost",
+      feedItemId,
+    });
+  }
+
+  revalidatePath("/home");
+  revalidatePath("/posts");
+  revalidatePath(`/posts/${feedItemId}`);
+  return { ok: true };
+}
+
+export async function toggleThreadReplyLike(replyId: string): Promise<ActionResult> {
+  if (!supabaseEnabled) return { ok: true, mock: true };
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: NEEDS_LOGIN };
+
+  const { data: reply, error: replyError } = await supabase
+    .from("thread_replies")
+    .select("id, thread_id, deleted_at")
+    .eq("id", replyId)
+    .maybeSingle();
+  if (replyError) return { ok: false, error: replyError.message };
+  if (!reply) return { ok: false, error: "Reply not found." };
+  if (reply.deleted_at) return { ok: false, error: "Deleted replies cannot be liked." };
+
+  const { data: existing } = await supabase
+    .from("thread_reply_likes")
+    .select("reply_id")
+    .eq("user_id", user.id)
+    .eq("reply_id", replyId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("thread_reply_likes")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("reply_id", replyId);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("thread_reply_likes")
+      .insert({ user_id: user.id, reply_id: replyId });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath(`/threads/${reply.thread_id}`);
+  return { ok: true };
 }
 
 /* ---------- コメント ---------- */

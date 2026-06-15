@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <RightRail />
-      <MobileNav meUsername={me?.username ?? null} />
+      <MobileNav meUsername={me?.username ?? null} unreadCount={unreadCount} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   type FeedItemType,
   type Goal,
   type Notification,
+  type QuotedFeedPreview,
   type RecordEntry,
   type Report,
   type ReportTargetType,
@@ -34,16 +35,19 @@ import {
   type ZineItem,
 } from "./types";
 
-export { TIMELINE_TABS } from "./timeline";
-export type { TimelineTab } from "./timeline";
-import type { TimelineTab } from "./timeline";
+export { TIMELINE_CONTENT_TYPES, TIMELINE_FEEDS } from "./timeline";
+export type { TimelineContentType, TimelineFeed } from "./timeline";
+import type { TimelineContentType, TimelineFeed } from "./timeline";
 
-const TAB_TYPE_FILTER: Partial<Record<TimelineTab, FeedItemType[]>> = {
-  reviews: ["review"],
-  records: ["record"],
-  discussions: ["thread"],
-  articles: ["article"],
+const TIMELINE_TYPE_TO_FEED_TYPES: Record<TimelineContentType, FeedItemType[]> = {
+  post: ["post", "quote", "repost"],
+  article: ["article"],
+  review: ["review"],
+  record: ["record"],
+  thread: ["thread"],
 };
+
+const ALL_PUBLIC_FEED_TYPES = Object.values(TIMELINE_TYPE_TO_FEED_TYPES).flat();
 
 /* =============================================================
  * マッピングヘルパー: Supabaseの行 → アプリのドメイン型
@@ -141,13 +145,20 @@ function mapSession(row: Row): RecordEntry {
     status: row.record?.status ?? "done",
     rating: row.record?.rating != null ? Number(row.record.rating) : undefined,
     date: row.consumed_at,
+    mode: row.entry_mode ?? "expert",
     durationMinutes: row.duration_minutes ?? undefined,
     pages: row.pages ?? undefined,
     episodes: row.episodes ?? undefined,
     tracks: row.tracks ?? undefined,
     memo: row.memo || undefined,
+    comment: row.comment || undefined,
+    imageUrls: row.image_urls ?? [],
     emotionTags: row.emotion_tags ?? [],
     place: row.place ?? undefined,
+    focusScore: row.focus_score ?? undefined,
+    satisfactionScore: row.satisfaction_score ?? undefined,
+    revisitScore: row.revisit_score ?? undefined,
+    customMetrics: row.custom_metrics ?? [],
     visibility: row.visibility,
   };
 }
@@ -197,7 +208,9 @@ async function fetchFeed(opts: {
   sourceIds?: string[];
   /** フォロー中タブ用: 人・作品・タグ付き活動のいずれかに一致(OR条件) */
   anyOf?: { userIds: string[]; workIds: string[]; sourceIds: string[] };
+  depth?: number;
 }): Promise<FeedItem[]> {
+  const depth = opts.depth ?? 0;
   const supabase = await createClient();
   let q = supabase
     .from("feed_items")
@@ -206,6 +219,7 @@ async function fetchFeed(opts: {
        profile:profiles(*),
        likes(count), comments(count), reposts(count), bookmarks(count)`,
     )
+    .eq("visibility", "public")
     .order("created_at", { ascending: false })
     .limit(50);
   if (opts.types) q = q.in("item_type", opts.types);
@@ -285,6 +299,29 @@ async function fetchFeed(opts: {
     fetchByIds("threads", `*, work:works(${WORK_SELECT})`, idsOf("thread")),
   ]);
 
+  const nestedTypes = ALL_PUBLIC_FEED_TYPES;
+  const quotedFeedItemIds = [
+    ...new Set(
+      [...posts.values()]
+        .map((post) => post.quoted_feed_item_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const repostedFeedItemIds = [...new Set(idsOf("repost"))];
+  const [quotedItems, repostedItems] =
+    depth < 2
+      ? await Promise.all([
+          quotedFeedItemIds.length > 0
+            ? fetchFeed({ ids: quotedFeedItemIds, types: nestedTypes, depth: depth + 1 })
+            : Promise.resolve([]),
+          repostedFeedItemIds.length > 0
+            ? fetchFeed({ ids: repostedFeedItemIds, types: nestedTypes, depth: depth + 1 })
+            : Promise.resolve([]),
+        ])
+      : [[], []];
+  const quotedById = new Map(quotedItems.map((item) => [item.id, toQuotedFeedPreview(item)]));
+  const repostedById = new Map(repostedItems.map((item) => [item.id, item]));
+
   // レビューの星は本棚から(判断4)
   const shelfRatings = await fetchShelfRatings([...reviews.values()]);
 
@@ -307,18 +344,38 @@ async function fetchFeed(opts: {
     if (r.item_type === "post" || r.item_type === "quote") {
       const p = posts.get(r.source_id);
       if (!p || p.deleted_at) continue; // 論理削除済みはタイムラインに出さない
+      const post = {
+        id: p.id,
+        body: p.body,
+        tags: p.tags ?? [],
+        likes: counts.likes,
+        reposts: counts.reposts,
+        comments: counts.comments,
+        bookmarks: counts.bookmarks,
+      };
+      if (r.item_type === "quote") {
+        items.push({
+          ...base,
+          type: "quote",
+          post,
+          quoted:
+            (p.quoted_feed_item_id && quotedById.get(p.quoted_feed_item_id)) ??
+            missingQuotedFeedPreview(base.user),
+        });
+        continue;
+      }
       items.push({
         ...base,
         type: "post",
-        post: {
-          id: p.id,
-          body: p.body,
-          tags: p.tags ?? [],
-          likes: counts.likes,
-          reposts: counts.reposts,
-          comments: counts.comments,
-          bookmarks: counts.bookmarks,
-        },
+        post,
+      });
+    } else if (r.item_type === "repost") {
+      const reposted = repostedById.get(r.source_id);
+      if (!reposted) continue;
+      items.push({
+        ...base,
+        type: "repost",
+        reposted,
       });
     } else if (r.item_type === "review") {
       const rv = reviews.get(r.source_id);
@@ -361,28 +418,257 @@ async function fetchFeed(opts: {
         work: mapWork(t.work),
       });
     }
-    // reply / repost / goal_achievement は将来のカード追加で対応
+    // reply / goal_achievement は将来のカード追加で対応
   }
   return items;
 }
 
-export async function getTimeline(tab: TimelineTab): Promise<FeedItem[]> {
+function feedItemHref(item: FeedItem): string {
+  if (item.type === "post" || item.type === "quote" || item.type === "repost") {
+    return `/posts/${item.id}`;
+  }
+  if (item.type === "record") return `/records/${item.record.id}`;
+  if (item.type === "article") return `/articles/${item.article.id}`;
+  if (item.type === "thread") return `/threads/${item.thread.id}`;
+  return `/posts/${item.id}`;
+}
+
+function missingQuotedFeedPreview(user: User): QuotedFeedPreview {
+  return {
+    user,
+    body: "引用元を表示できません。",
+    typeLabel: "UNAVAILABLE",
+    deleted: true,
+  };
+}
+
+function toQuotedFeedPreview(item: FeedItem): QuotedFeedPreview {
+  if (item.type === "post" || item.type === "quote") {
+    return {
+      user: item.user,
+      body: item.post.body,
+      typeLabel: item.type === "quote" ? "QUOTE" : "POST",
+      href: feedItemHref(item),
+    };
+  }
+  if (item.type === "review") {
+    return {
+      user: item.user,
+      body: item.review.body,
+      workTitle: item.work.title,
+      typeLabel: "REVIEW",
+      href: feedItemHref(item),
+    };
+  }
+  if (item.type === "record") {
+    return {
+      user: item.user,
+      body: item.record.memo ?? item.record.comment ?? "記録を公開しました。",
+      workTitle: item.work.title,
+      typeLabel: "RECORD",
+      href: feedItemHref(item),
+    };
+  }
+  if (item.type === "article") {
+    return {
+      user: item.user,
+      body: item.article.excerpt || item.article.title,
+      typeLabel: "ARTICLE",
+      href: feedItemHref(item),
+    };
+  }
+  if (item.type === "thread") {
+    return {
+      user: item.user,
+      body: item.thread.body || item.thread.title,
+      workTitle: item.work.title,
+      typeLabel: "THREAD",
+      href: feedItemHref(item),
+    };
+  }
+  return toQuotedFeedPreview(item.reposted);
+}
+
+function feedTypesForTimelineTypes(types?: TimelineContentType[]): FeedItemType[] {
+  if (!types) return ALL_PUBLIC_FEED_TYPES;
+  return types.flatMap((type) => TIMELINE_TYPE_TO_FEED_TYPES[type] ?? []);
+}
+
+function isPublicFeedItem(item: FeedItem): boolean {
+  if (item.type === "review") return item.review.visibility === "public";
+  if (item.type === "record") return item.record.visibility === "public";
+  if (item.type === "repost") return isPublicFeedItem(item.reposted);
+  return true;
+}
+
+function feedItemTags(item: FeedItem): string[] {
+  if (item.type === "post" || item.type === "quote") return item.post.tags;
+  if (item.type === "review") return [...item.review.tags, ...item.work.tags];
+  if (item.type === "article") return item.article.tags;
+  if (item.type === "record" || item.type === "thread") return item.work.tags;
+  if (item.type === "repost") return feedItemTags(item.reposted);
+  return [];
+}
+
+function feedItemWorkId(item: FeedItem): string | undefined {
+  if (item.type === "review" || item.type === "record" || item.type === "thread") {
+    return item.work.id;
+  }
+  if (item.type === "repost") return feedItemWorkId(item.reposted);
+  return undefined;
+}
+
+function feedItemCategory(item: FeedItem): WorkCategory | undefined {
+  if (item.type === "review" || item.type === "record" || item.type === "thread") {
+    return item.work.category;
+  }
+  if (item.type === "repost") return feedItemCategory(item.reposted);
+  return undefined;
+}
+
+function feedItemEngagement(item: FeedItem): number {
+  if (item.type === "post" || item.type === "quote") {
+    return item.post.likes * 2 + item.post.comments * 3 + item.post.bookmarks;
+  }
+  if (item.type === "review") return item.review.likes * 2 + item.review.comments * 3;
+  if (item.type === "article") return item.article.likes * 2 + item.article.comments * 3;
+  if (item.type === "thread") return item.thread.replyCount * 3;
+  if (item.type === "repost") return feedItemEngagement(item.reposted) + 5;
+  return 0;
+}
+
+type RecommendationContext = {
+  ownUserId?: string;
+  followedUserIds: Set<string>;
+  followedWorkIds: Set<string>;
+  followedTags: string[];
+  trendingTags: string[];
+  preferredCategories: Set<WorkCategory>;
+};
+
+function emptyRecommendationContext(): RecommendationContext {
+  return {
+    followedUserIds: new Set(),
+    followedWorkIds: new Set(),
+    followedTags: [],
+    trendingTags: [],
+    preferredCategories: new Set(),
+  };
+}
+
+function scoreRecommendedItem(item: FeedItem, context: RecommendationContext): number {
+  let score = feedItemEngagement(item);
+  const workId = feedItemWorkId(item);
+  const category = feedItemCategory(item);
+  const tags = feedItemTags(item);
+  if (context.ownUserId && item.user.id === context.ownUserId) score -= 20;
+  if (context.followedUserIds.has(item.user.id)) score += 70;
+  if (workId && context.followedWorkIds.has(workId)) score += 90;
+  if (category && context.preferredCategories.has(category)) score += 40;
+  score += tags.filter((tag) => context.followedTags.includes(tag)).length * 55;
+  const trendIndex = tags
+    .map((tag) => context.trendingTags.indexOf(tag))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  if (trendIndex != null) score += Math.max(10, 35 - trendIndex * 5);
+  const ageDays = (Date.now() - +new Date(item.createdAt)) / 86_400_000;
+  if (Number.isFinite(ageDays)) score += Math.max(0, 24 - ageDays);
+  return score;
+}
+
+function rankRecommendedItems(
+  items: FeedItem[],
+  context: RecommendationContext,
+): FeedItem[] {
+  return [...items].sort((a, b) => {
+    const scoreDiff = scoreRecommendedItem(b, context) - scoreRecommendedItem(a, context);
+    if (scoreDiff !== 0) return scoreDiff;
+    return +new Date(b.createdAt) - +new Date(a.createdAt);
+  });
+}
+
+function buildMockRecommendationContext(): RecommendationContext {
+  const workMap = new Map(mock.works.map((work) => [work.id, work]));
+  const mine = mock.feedItems.filter((item) => item.user.id === mock.currentUser.id);
+  const followedWorkIds = new Set<string>();
+  const preferredCategories = new Set<WorkCategory>();
+  for (const item of mine) {
+    const workId = feedItemWorkId(item);
+    if (!workId) continue;
+    followedWorkIds.add(workId);
+    const category = workMap.get(workId)?.category;
+    if (category) preferredCategories.add(category);
+  }
+  return {
+    ownUserId: mock.currentUser.id,
+    followedUserIds: new Set(mock.users.slice(1, 4).map((user) => user.id)),
+    followedWorkIds,
+    followedTags: mock.followedTags,
+    trendingTags: buildMockTrendingTags().map((tag) => tag.tag),
+    preferredCategories,
+  };
+}
+
+async function fetchRecommendationContext(): Promise<RecommendationContext> {
+  const me = await getCurrentUser();
+  if (!me) return emptyRecommendationContext();
+  const supabase = await createClient();
+  const [{ data: follows }, records, works, trends] = await Promise.all([
+    supabase
+      .from("follows")
+      .select("followee_user_id, work_id, tag:tags(name)")
+      .eq("follower_id", me.id),
+    getRecords(),
+    getWorks(),
+    getTrendingTags(),
+  ]);
+  const workMap = new Map(works.map((work) => [work.id, work]));
+  const preferredCategories = new Set<WorkCategory>();
+  for (const record of records) {
+    const category = workMap.get(record.workId)?.category;
+    if (category) preferredCategories.add(category);
+  }
+  return {
+    ownUserId: me.id,
+    followedUserIds: new Set(
+      ((follows as Row[] | null) ?? []).map((f) => f.followee_user_id).filter(Boolean),
+    ),
+    followedWorkIds: new Set(
+      ((follows as Row[] | null) ?? []).map((f) => f.work_id).filter(Boolean),
+    ),
+    followedTags: ((follows as Row[] | null) ?? [])
+      .map((f) => f.tag?.name)
+      .filter(Boolean),
+    trendingTags: trends.map((trend) => trend.tag),
+    preferredCategories,
+  };
+}
+
+export async function getTimeline(
+  feed: TimelineFeed,
+  opts: { types?: TimelineContentType[] } = {},
+): Promise<FeedItem[]> {
+  const feedTypes = feedTypesForTimelineTypes(opts.types);
+  if (feedTypes.length === 0) return [];
+
   if (!supabaseEnabled) {
     const sorted = [...mock.feedItems].sort(
       (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
-    );
-    const filter = TAB_TYPE_FILTER[tab];
-    if (filter) return sorted.filter((i) => filter.includes(i.type));
-    if (tab === "following") {
+    ).filter(isPublicFeedItem);
+    const typed = sorted.filter((item) => feedTypes.includes(item.type));
+    if (feed === "following") {
       const ids = mock.users.slice(1, 4).map((u) => u.id);
-      return sorted.filter(
-        (i) => ids.includes(i.user.id) || feedItemHasAnyTag(i, mock.followedTags),
+      return typed.filter(
+        (item) => ids.includes(item.user.id) || feedItemHasAnyTag(item, mock.followedTags),
       );
     }
-    return sorted;
+    if (feed === "recommended") {
+      return rankRecommendedItems(typed, buildMockRecommendationContext());
+    }
+    return typed;
   }
 
-  if (tab === "following") {
+  if (feed === "following") {
     const me = await getCurrentUser();
     if (!me) return [];
     const supabase = await createClient();
@@ -397,9 +683,18 @@ export async function getTimeline(tab: TimelineTab): Promise<FeedItem[]> {
     const tagNames = follows.map((f) => f.tag?.name).filter(Boolean);
     const sourceIds = await fetchTaggedSourceIds(tagNames);
     if (userIds.length + workIds.length + sourceIds.length === 0) return [];
-    return fetchFeed({ anyOf: { userIds, workIds, sourceIds } });
+    return fetchFeed({ types: feedTypes, anyOf: { userIds, workIds, sourceIds } });
   }
-  return fetchFeed({ types: TAB_TYPE_FILTER[tab] });
+
+  if (feed === "recommended") {
+    const [items, context] = await Promise.all([
+      fetchFeed({ types: feedTypes }),
+      fetchRecommendationContext(),
+    ]);
+    return rankRecommendedItems(items, context);
+  }
+
+  return fetchFeed({ types: feedTypes });
 }
 
 export async function getUserFeed(
@@ -548,31 +843,34 @@ export async function isFollowingWork(workId: string): Promise<boolean> {
 
 /** タイムライン項目にいずれかのタグが付いているか(モック用) */
 function feedItemHasAnyTag(item: FeedItem, tags: string[]): boolean {
-  const itemTags =
-    item.type === "post" || item.type === "quote"
-      ? item.post.tags
-      : item.type === "review"
-        ? item.review.tags
-        : item.type === "article"
-          ? item.article.tags
-          : [];
-  return itemTags.some((t) => tags.includes(t));
+  return feedItemTags(item).some((t) => tags.includes(t));
 }
 
 /** いずれかのタグが付いた本体行のID(posts / reviews / articles) */
 async function fetchTaggedSourceIds(tags: string[]): Promise<string[]> {
   if (tags.length === 0) return [];
   const supabase = await createClient();
-  const [posts, reviews, articles] = await Promise.all([
+  const { data: tagRows } = await supabase.from("tags").select("id").in("name", tags);
+  const tagIds = ((tagRows as Row[] | null) ?? []).map((tag) => tag.id).filter(Boolean);
+  const [posts, reviews, articles, taggings] = await Promise.all([
     supabase.from("posts").select("id").overlaps("tags", tags).is("deleted_at", null).limit(50),
     supabase.from("reviews").select("id").overlaps("tags", tags).limit(50),
     supabase.from("articles").select("id").overlaps("tags", tags).eq("status", "published").limit(50),
+    tagIds.length > 0
+      ? supabase
+          .from("taggings")
+          .select("target_id, target_type")
+          .in("tag_id", tagIds)
+          .in("target_type", ["post", "article", "review", "record_session"])
+          .limit(100)
+      : Promise.resolve({ data: [] }),
   ]);
-  return [
+  return [...new Set([
     ...(posts.data ?? []),
     ...(reviews.data ?? []),
     ...(articles.data ?? []),
-  ].map((r) => r.id);
+    ...(((taggings.data as Row[] | null) ?? []).map((row) => ({ id: row.target_id }))),
+  ].map((r) => r.id).filter(Boolean))];
 }
 
 /** このタグが付いた活動(短文・レビュー・記事) */
@@ -930,6 +1228,32 @@ export async function getRecords(): Promise<RecordEntry[]> {
   return (data ?? []).map(mapSession);
 }
 
+export async function getRecord(
+  id: string,
+): Promise<{ record: RecordEntry; work: Work; user?: User } | undefined> {
+  if (!supabaseEnabled) {
+    const record = mock.records.find((r) => r.id === id);
+    const work = record ? mock.works.find((w) => w.id === record.workId) : undefined;
+    if (!record || !work) return undefined;
+    const feedItem = mock.feedItems.find(
+      (item) => item.type === "record" && item.record.id === id,
+    );
+    return { record, work, user: feedItem?.user };
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("record_sessions")
+    .select(`*, profile:profiles(*), record:records(status, work_id, rating, work:works(${WORK_SELECT}))`)
+    .eq("id", id)
+    .maybeSingle();
+  if (!data?.record?.work) return undefined;
+  return {
+    record: mapSession(data),
+    work: mapWork(data.record.work),
+    user: data.profile ? mapProfile(data.profile) : undefined,
+  };
+}
+
 export async function getRecordsForWork(workId: string): Promise<RecordEntry[]> {
   if (!supabaseEnabled) return mock.records.filter((r) => r.workId === workId);
   const supabase = await createClient();
@@ -1107,7 +1431,10 @@ export async function getThreadsForWork(workId: string): Promise<Thread[]> {
 }
 
 export async function getRepliesForThread(threadId: string): Promise<ThreadReply[]> {
-  if (!supabaseEnabled) return mock.threadReplies.filter((r) => r.threadId === threadId);
+  if (!supabaseEnabled)
+    return mock.threadReplies
+      .filter((r) => r.threadId === threadId)
+      .map((r) => ({ ...r, viewerLiked: false }));
   const supabase = await createClient();
   // 論理削除された行も返す(レス番号の保全)。表示側で「削除済み」処理
   const { data } = await supabase
@@ -1115,7 +1442,21 @@ export async function getRepliesForThread(threadId: string): Promise<ThreadReply
     .select("*, thread_reply_likes(count)")
     .eq("thread_id", threadId)
     .order("number");
-  return (data ?? []).map((r: Row) => ({
+  const rows = data ?? [];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const likedIds = new Set<string>();
+  if (user && rows.length > 0) {
+    const replyIds = rows.map((r: Row) => r.id);
+    const { data: likes } = await supabase
+      .from("thread_reply_likes")
+      .select("reply_id")
+      .eq("user_id", user.id)
+      .in("reply_id", replyIds);
+    for (const like of likes ?? []) likedIds.add(like.reply_id);
+  }
+  return rows.map((r: Row) => ({
     id: r.id,
     threadId: r.thread_id,
     number: r.number,
@@ -1123,6 +1464,7 @@ export async function getRepliesForThread(threadId: string): Promise<ThreadReply
     body: r.deleted_at ? "" : r.body,
     quoteNumber: r.quote_number ?? undefined,
     likes: r.thread_reply_likes?.[0]?.count ?? 0,
+    viewerLiked: likedIds.has(r.id),
     deleted: Boolean(r.deleted_at),
     createdAt: r.created_at,
   }));
@@ -1192,9 +1534,72 @@ export async function getUnreadNotificationCount(): Promise<number> {
 }
 
 /* =============================================================
- * トレンド(v1は固定。将来taggings集計に置換)
+ * トレンド
  * ============================================================= */
 
-export async function getTrendingTags() {
-  return mock.trendingTags;
+type TrendTag = { tag: string; count: number };
+
+function addTagCount(counts: Map<string, number>, tag: unknown, weight = 1) {
+  if (typeof tag !== "string") return;
+  const normalized = tag.trim().replace(/^#/, "");
+  if (!normalized) return;
+  counts.set(normalized, (counts.get(normalized) ?? 0) + weight);
+}
+
+function rankTagCounts(counts: Map<string, number>, limit = 6): TrendTag[] {
+  return [...counts.entries()]
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, "ja"))
+    .slice(0, limit);
+}
+
+function buildMockTrendingTags(): TrendTag[] {
+  const counts = new Map<string, number>();
+  for (const item of mock.feedItems) {
+    const engagement = Math.max(1, Math.round(feedItemEngagement(item) / 20));
+    for (const tag of feedItemTags(item)) addTagCount(counts, tag, engagement);
+  }
+  for (const tag of mock.trendingTags) {
+    addTagCount(counts, tag.tag, Math.max(1, Math.round(tag.count / 100)));
+  }
+  return rankTagCounts(counts);
+}
+
+export async function getTrendingTags(): Promise<TrendTag[]> {
+  if (!supabaseEnabled) return buildMockTrendingTags();
+
+  const supabase = await createClient();
+  const [taggings, posts, reviews, articles, works] = await Promise.all([
+    supabase.from("taggings").select("tag:tags(name)").limit(500),
+    supabase
+      .from("posts")
+      .select("tags")
+      .eq("visibility", "public")
+      .is("deleted_at", null)
+      .limit(300),
+    supabase.from("reviews").select("tags").eq("visibility", "public").limit(300),
+    supabase
+      .from("articles")
+      .select("tags")
+      .eq("status", "published")
+      .eq("visibility", "public")
+      .limit(300),
+    supabase.from("works").select("tags").limit(300),
+  ]);
+
+  const counts = new Map<string, number>();
+  for (const row of ((taggings.data as Row[] | null) ?? [])) {
+    addTagCount(counts, row.tag?.name, 2);
+  }
+  for (const row of [
+    ...((posts.data as Row[] | null) ?? []),
+    ...((reviews.data as Row[] | null) ?? []),
+    ...((articles.data as Row[] | null) ?? []),
+    ...((works.data as Row[] | null) ?? []),
+  ]) {
+    for (const tag of row.tags ?? []) addTagCount(counts, tag);
+  }
+
+  const ranked = rankTagCounts(counts);
+  return ranked.length > 0 ? ranked : mock.trendingTags;
 }

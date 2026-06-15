@@ -234,13 +234,20 @@ create table record_sessions (
   record_id uuid not null references records(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
   consumed_at timestamptz not null default now(),
+  entry_mode text not null default 'expert' check (entry_mode in ('rough','expert')),
   duration_minutes int check (duration_minutes >= 0),
   pages int check (pages >= 0),
   episodes int check (episodes >= 0),
   tracks int check (tracks >= 0),
   memo text default '',
+  comment text default '',
+  image_urls text[] not null default '{}',
   emotion_tags text[] not null default '{}',
   place text,
+  focus_score int check (focus_score between 0 and 10),
+  satisfaction_score int check (satisfaction_score between 0 and 10),
+  revisit_score int check (revisit_score between 0 and 10),
+  custom_metrics jsonb not null default '[]'::jsonb,
   visibility text not null default 'private' check (visibility in ('public','private','followers')),
   created_at timestamptz not null default now()
 );
@@ -614,6 +621,7 @@ create policy "replies readable" on thread_replies for select using (true);
 create policy "replies insert" on thread_replies for insert with check (auth.uid() = user_id);
 create policy "replies update by owner or mod" on thread_replies for update
   using (auth.uid() = user_id or is_moderator());
+create policy "reply likes readable" on thread_reply_likes for select using (true);
 create policy "reply likes self" on thread_reply_likes for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 

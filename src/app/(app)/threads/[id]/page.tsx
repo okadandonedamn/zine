@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Heart } from "lucide-react";
+import { ReplyLikeButton } from "@/components/board/reply-like-button";
 import { ReplyComposer } from "@/components/board/reply-composer";
 import { ReportButton } from "@/components/common/report-button";
 import { WorkChip } from "@/components/timeline/work-chip";
@@ -96,10 +96,11 @@ export default async function ThreadDetailPage({
               )}
               <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{r.body}</p>
               <div className="mt-2.5 flex flex-wrap items-center gap-4 text-xs text-subtle">
-                <button className="flex cursor-pointer items-center gap-1 transition-colors hover:text-accent">
-                  <Heart size={13} />
-                  {r.likes}
-                </button>
+                <ReplyLikeButton
+                  replyId={r.id}
+                  initialLiked={Boolean(r.viewerLiked)}
+                  initialCount={r.likes}
+                />
                 <ReportButton targetType="thread_reply" targetId={r.id} />
               </div>
             </div>
